@@ -33,13 +33,15 @@
 
 ## 🎯 一句话简介
 
-> **sdkm** 是一款专为全栈工程师打造的跨平台 SDK 版本管理器，一键安装与切换 Java、Node.js、Python、Maven、Go、uv、bun、claude-code、cmake ... 等 40+ 开发工具，**比 sdkman/nvm/jenv/pyenv 更快、更安全、更省心**。
+> **sdkm（简称：时代楷模👀）** 是一款专为全栈工程师打造的跨平台 SDK 版本管理器，一键安装与切换 Java、Node.js、Python、Maven、Go、uv、bun、claude-code、cmake ... 等 40+ 开发工具，**比 sdkman/nvm/jenv/pyenv 更快、更安全、更省心**。
 
 ```bash
 sdkm init && sdkm install java 21   # 初始化 + 安装 Java 21 并自动切换，一行搞定
 ```
 
 ---
+
+
 
 ## ✨ 核心优势
 
@@ -68,6 +70,20 @@ sdkm init && sdkm install java 21   # 初始化 + 安装 Java 21 并自动切换
   </table>
 </div>
 
+
+### 🔥 专为全栈工程师设计
+
+全栈工程师在 Java、Node.js、Python、Go、Maven 等 SDK 版本之间来回切换是常态——以往要同时装 nvm、jenv、pyenv、sdkman 多套脚本工具，各管一摊、互不通气。**sdkm 用一个 Rust 二进制把这件事做完。**
+
+- **🟢 纯绿色，可移植**：单二进制就是全部，不装后台服务。sdkm 的「`HOME`」就是可执行文件所在目录——拷到 U 盘、另一台机器，配置和已装 SDK 一并带走。把已有 JDK / Node / Python 直接放进 `store/` 目录，sdkm 自动发现并托管。
+- **⚡ 三种作用域，按需切换**：全局（`switch` 改符号链接与 config，shell hook 每次回车动态重建 PATH——切换后**按回车即生效**，Windows 下 `WM_SETTINGCHANGE` 广播让已开程序可感知）、项目（`use` 写 `.sdkm.toml`，shell hook 进目录自动切、离开还原）、临时（`use --shell` 当前终端覆盖）三种作用域同时支持，同一套机制按需选用。
+- **🛡️ 透明可回滚，出错不翻车**：每一步操作都逐步打印做了什么、为什么；`switch` 任一步骤失败自动恢复到切换前状态；`config` 采用原子写入 + 快照回滚，配置文件绝不会写到一半损坏。
+- **🦀 Rust 驱动，类型安全更可靠**：由 Rust 编写，所有权与类型系统在编译期消除悬垂指针、缓冲区溢出、数据竞争等整类内存安全问题；相比无类型检查的 bash 脚本，多一层编译期兜底，不易因拼写或空值静默出错。配合原子写入 + 快照回滚，操作失败也不会把环境搞坏。
+- **🧩 可扩展，一个工具管所有**：内置 Java / Node.js / Python / Maven / Go / Any Sdk，任何能从 URL 下载解压的工具都能一行命令注册为自定义 SDK。配置按类型校验，改错当场报错——**告别"为每个语言学一套版本管理器"**。
+- **🖥️ 跨平台原生 + 交互式 TUI**：Windows / Linux / macOS 全平台一等公民，统一命令统一体验；`sdkm list <sdk> -r` 进入交互式 TUI，方向键浏览远程版本、一键安装/切换，操作极其友好，Windows也能支持的很好！
+- **🤖 AI agent 友好，让 AI 替你管环境**：自带 [agent skill 文档](./skills/SKILL.md)，Claude Code / Codex/openclaw 等 agent 读一遍即可替你装/切 SDK；CLI进程退出码语义清晰（0 成功 / 1 失败），CLI命令天然适配脚本与 CI，操作失败自动回滚——agent 放心调用。
+
+
 ### 🤖 让AI Agent替你管理 SDK
 > 2026年了，嫌弃cli命令太多不好记？怕有学习成本？那就让Ai Agent来帮忙!
 
@@ -90,6 +106,7 @@ sdkm 自带一份自包含的 [agent skill 文档](./skills/SKILL.md)——Claud
 切到 node 20.11.0          → sdkm switch node 20.11.0
 看看本地装了哪些 python     → sdkm list
 ```
+
 
 ### 📊 与同类工具对比
 
@@ -117,19 +134,11 @@ sdkm 自带一份自包含的 [agent skill 文档](./skills/SKILL.md)——Claud
 2. 另外 如果你已经习惯 mise / sdkman / nvm，并能在现有模式下顺畅工作，完全没必要换工具。
    sdkm 更适合：‘**全栈工程师  + Windows 原生 + IDE + AI Agent**’ 这一组合场景的用户。”
 
-### 🔥 专为全栈工程师设计
 
-全栈工程师在 Java、Node.js、Python、Go、Maven 等 SDK 版本之间来回切换是常态——以往要同时装 nvm、jenv、pyenv、sdkman 多套脚本工具，各管一摊、互不通气。**sdkm 用一个 Rust 二进制把这件事做完。**
 
-- **🟢 纯绿色，可移植**：单二进制就是全部，不装后台服务。sdkm 的「`HOME`」就是可执行文件所在目录——拷到 U 盘、另一台机器，配置和已装 SDK 一并带走。把已有 JDK / Node / Python 直接放进 `store/` 目录，sdkm 自动发现并托管。
-- **⚡ 三种作用域，按需切换**：全局（`switch` 改符号链接与 config，shell hook 每次回车动态重建 PATH——切换后**按回车即生效**，Windows 下 `WM_SETTINGCHANGE` 广播让已开程序可感知）、项目（`use` 写 `.sdkm.toml`，shell hook 进目录自动切、离开还原）、临时（`use --shell` 当前终端覆盖）三种作用域同时支持，同一套机制按需选用。
-- **🛡️ 透明可回滚，出错不翻车**：每一步操作都逐步打印做了什么、为什么；`switch` 任一步骤失败自动恢复到切换前状态；`config` 采用原子写入 + 快照回滚，配置文件绝不会写到一半损坏。
-- **🦀 Rust 驱动，类型安全更可靠**：由 Rust 编写，所有权与类型系统在编译期消除悬垂指针、缓冲区溢出、数据竞争等整类内存安全问题；相比无类型检查的 bash 脚本，多一层编译期兜底，不易因拼写或空值静默出错。配合原子写入 + 快照回滚，操作失败也不会把环境搞坏。
-- **🧩 可扩展，一个工具管所有**：内置 Java / Node.js / Python / Maven / Go / Any Sdk，任何能从 URL 下载解压的工具都能一行命令注册为自定义 SDK。配置按类型校验，改错当场报错——**告别"为每个语言学一套版本管理器"**。
-- **🖥️ 跨平台原生 + 交互式 TUI**：Windows / Linux / macOS 全平台一等公民，统一命令统一体验；`sdkm list <sdk> -r` 进入交互式 TUI，方向键浏览远程版本、一键安装/切换，操作极其友好，Windows也能支持的很好！
-- **🤖 AI agent 友好，让 AI 替你管环境**：自带 [agent skill 文档](./skills/SKILL.md)，Claude Code / Codex/openclaw 等 agent 读一遍即可替你装/切 SDK；CLI进程退出码语义清晰（0 成功 / 1 失败），CLI命令天然适配脚本与 CI，操作失败自动回滚——agent 放心调用。
 
 ---
+
 
 ## 📦 安装
 
