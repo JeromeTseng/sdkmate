@@ -227,6 +227,10 @@ fn run_sdk_selector_inner(
             .context("Failed to setup TUI mode")
     );
 
+    // 增量重绘：仅状态变化（按键导航/size 回填/tip 轮换）时重画，空轮询不清屏避免闪烁
+    let mut need_redraw = true;
+    let mut last_done = 0usize;
+
     let result = loop {
         if selected < scroll_offset {
             scroll_offset = selected;
@@ -234,230 +238,238 @@ fn run_sdk_selector_inner(
             scroll_offset = selected - visible + 1;
         }
 
-        queue!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+        if need_redraw {
+            queue!(stdout, MoveTo(0, 0))?;
 
-        let bold = ContentStyle::new().attribute(Attribute::Bold);
-        let reset = ContentStyle::new();
+            let bold = ContentStyle::new().attribute(Attribute::Bold);
+            let reset = ContentStyle::new();
 
-        // ── Header ──
-        let mut row: u16 = 0;
-        // 居中标题：相对表格主体（DIVIDER 宽度）居中，非全屏；样式同 ls 概览表格（ℹ️ 带 VS16 实渲染宽 2 补 1）
-        let title = "ℹ️  registered sdks";
-        let title_w = UnicodeWidthStr::width(title) + 1;
-        let left_pad = DIVIDER.chars().count().saturating_sub(title_w) / 2;
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::Blue),
-            SetStyle(bold),
-            Print(format!("{}{}", " ".repeat(left_pad), title)),
-            SetStyle(reset),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
+            // ── Header ──
+            let mut row: u16 = 0;
+            // 居中标题：相对表格主体（DIVIDER 宽度）居中，非全屏；样式同 ls 概览表格（ℹ️ 带 VS16 实渲染宽 2 补 1）
+            let title = "ℹ️  registered sdks";
+            let title_w = UnicodeWidthStr::width(title) + 1;
+            let left_pad = DIVIDER.chars().count().saturating_sub(title_w) / 2;
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::Blue),
+                SetStyle(bold),
+                Print(format!("{}{}", " ".repeat(left_pad), title)),
+                SetStyle(reset),
+                SetForegroundColor(Color::Reset)
+            )?;
+            row += 1;
 
-        // 标题下分隔线（2 空格缩进与表头下分隔线对齐，样式同 ls 概览表格）
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  {}", DIVIDER)),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // 表头（青粗体，缩进对齐数据列，样式同 ls 概览表格）
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::Cyan),
-            SetStyle(bold),
-            Print(format!(
-                "{}{}  {}  {}",
-                " ".repeat(header_pad),
-                pad_right("sdk", name_col_width),
-                pad_right("current", cur_col_width),
-                "total"
-            )),
-            SetStyle(reset),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // 分隔线（表头与数据隔开，样式同 ls 概览表格）
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  {}", DIVIDER)),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // 已安装/未安装分界线之前的行数（滚动指示器会占行，分界行号动态算）
-        let boundary_installed = ordered.iter().filter(|i| i.installed).count();
-
-        // ── Scroll indicator (above) ──
-        if scroll_offset > 0 {
+            // 标题下分隔线（2 空格缩进与表头下分隔线对齐，样式同 ls 概览表格）
             queue!(
                 stdout,
                 MoveTo(0, row),
                 Clear(ClearType::CurrentLine),
                 SetForegroundColor(Color::DarkGrey),
-                Print(format!("  ↑ {} more above", scroll_offset)),
+                Print(format!("  {}", DIVIDER)),
                 SetForegroundColor(Color::Reset)
             )?;
             row += 1;
-        }
 
-        // ── Items ──
-        let end = (scroll_offset + visible).min(total);
-        for i in scroll_offset..end {
-            // 已安装组结束后画一条虚点分组线（首次进入视野时；虚点弱于实线，表意"同列表的软分隔"）
-            if i == boundary_installed && boundary_installed > 0 {
+            // 表头（青粗体，缩进对齐数据列，样式同 ls 概览表格）
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::Cyan),
+                SetStyle(bold),
+                Print(format!(
+                    "{}{}  {}  {}",
+                    " ".repeat(header_pad),
+                    pad_right("sdk", name_col_width),
+                    pad_right("current", cur_col_width),
+                    "total"
+                )),
+                SetStyle(reset),
+                SetForegroundColor(Color::Reset)
+            )?;
+            row += 1;
+
+            // 分隔线（表头与数据隔开，样式同 ls 概览表格）
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::DarkGrey),
+                Print(format!("  {}", DIVIDER)),
+                SetForegroundColor(Color::Reset)
+            )?;
+            row += 1;
+
+            // 已安装/未安装分界线之前的行数（滚动指示器会占行，分界行号动态算）
+            let boundary_installed = ordered.iter().filter(|i| i.installed).count();
+
+            // ── Scroll indicator (above) ──
+            if scroll_offset > 0 {
                 queue!(
                     stdout,
                     MoveTo(0, row),
                     Clear(ClearType::CurrentLine),
                     SetForegroundColor(Color::DarkGrey),
-                    Print(format!("  {}", DIVIDER_DOT)),
+                    Print(format!("  ↑ {} more above", scroll_offset)),
                     SetForegroundColor(Color::Reset)
                 )?;
                 row += 1;
             }
 
-            // 数据行配色分层：已安装=亮色调（sdk 白粗/current 亮绿/total 灰），未安装=整体暗灰 + N/A 占位
-            let cur_str = if ordered[i].installed {
-                currents[i].clone()
-            } else {
-                "N/A".to_string()
-            };
-            let size_str = if ordered[i].installed {
-                live_size_str(&live_sizes, i)
-            } else {
-                "N/A".to_string()
-            };
-            // mark 补空格到固定列宽保证序号对齐（" " 无 VS16 差异，直接按宽补）
-            let mark_pad = " ".repeat(mark_w.saturating_sub(marks[i].width()));
+            // ── Items ──
+            let end = (scroll_offset + visible).min(total);
+            for i in scroll_offset..end {
+                // 已安装组结束后画一条虚点分组线（首次进入视野时；虚点弱于实线，表意"同列表的软分隔"）
+                if i == boundary_installed && boundary_installed > 0 {
+                    queue!(
+                        stdout,
+                        MoveTo(0, row),
+                        Clear(ClearType::CurrentLine),
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(format!("  {}", DIVIDER_DOT)),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                    row += 1;
+                }
 
-            queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
+                // 数据行配色分层：已安装=亮色调（sdk 白粗/current 亮绿/total 灰），未安装=整体暗灰 + N/A 占位
+                let cur_str = if ordered[i].installed {
+                    currents[i].clone()
+                } else {
+                    "N/A".to_string()
+                };
+                let size_str = if ordered[i].installed {
+                    live_size_str(&live_sizes, i)
+                } else {
+                    "N/A".to_string()
+                };
+                // mark 补空格到固定列宽保证序号对齐（" " 无 VS16 差异，直接按宽补）
+                let mark_pad = " ".repeat(mark_w.saturating_sub(marks[i].width()));
 
-            if i == selected {
-                // 选中行：高亮背景只盖前缀区（指针 + mark + 序号），sdk 列开始提亮（sdk 亮白粗/current 亮绿）
-                queue!(
-                    stdout,
-                    SetBackgroundColor(Color::DarkCyan),
-                    SetForegroundColor(Color::White),
-                    SetStyle(bold),
-                    Print(format!("  ▸ {}{} {:>2}. ", marks[i], mark_pad, i + 1)),
-                    SetBackgroundColor(Color::Reset),
-                    SetForegroundColor(Color::Reset),
-                    SetForegroundColor(Color::White),
-                    SetStyle(bold),
-                    Print(pad_right(names[i], name_col_width)),
-                    SetStyle(reset),
-                    SetForegroundColor(Color::Green),
-                    Print(format!("  {}", pad_right(&cur_str, cur_col_width))),
-                    SetForegroundColor(Color::DarkGrey),
-                    Print(format!("  {}", size_str)),
-                    SetForegroundColor(Color::Reset)
-                )?;
-            } else {
-                let installed = ordered[i].installed;
-                // 未选中行：已安装用亮色调，未安装整体暗灰（sdk 名淡青在暗灰组里仍可辨）
-                queue!(
-                    stdout,
-                    SetForegroundColor(if installed { Color::Reset } else { Color::DarkGrey }),
-                    Print(format!("    {}{} {:>2}. ", marks[i], mark_pad, i + 1)),
-                    SetForegroundColor(if installed { Color::White } else { Color::Cyan }),
-                    SetStyle(if installed { bold } else { reset }),
-                    Print(pad_right(names[i], name_col_width)),
-                    SetStyle(reset),
-                    SetForegroundColor(if installed { Color::Green } else { Color::DarkGrey }),
-                    Print(format!("  {}", pad_right(&cur_str, cur_col_width))),
-                    SetForegroundColor(Color::DarkGrey),
-                    Print(format!("  {}", size_str)),
-                    SetForegroundColor(Color::Reset)
-                )?;
+                queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
+
+                if i == selected {
+                    // 选中行：高亮背景只盖前缀区（指针 + mark + 序号），sdk 列开始提亮（sdk 亮白粗/current 亮绿）
+                    queue!(
+                        stdout,
+                        SetBackgroundColor(Color::DarkCyan),
+                        SetForegroundColor(Color::White),
+                        SetStyle(bold),
+                        Print(format!("  ▸ {}{} {:>2}. ", marks[i], mark_pad, i + 1)),
+                        SetBackgroundColor(Color::Reset),
+                        SetForegroundColor(Color::Reset),
+                        SetForegroundColor(Color::White),
+                        SetStyle(bold),
+                        Print(pad_right(names[i], name_col_width)),
+                        SetStyle(reset),
+                        SetForegroundColor(Color::Green),
+                        Print(format!("  {}", pad_right(&cur_str, cur_col_width))),
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(format!("  {}", size_str)),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                } else {
+                    let installed = ordered[i].installed;
+                    // 未选中行：已安装用亮色调，未安装整体暗灰（sdk 名淡青在暗灰组里仍可辨）
+                    queue!(
+                        stdout,
+                        SetForegroundColor(if installed { Color::Reset } else { Color::DarkGrey }),
+                        Print(format!("    {}{} {:>2}. ", marks[i], mark_pad, i + 1)),
+                        SetForegroundColor(if installed { Color::White } else { Color::Cyan }),
+                        SetStyle(if installed { bold } else { reset }),
+                        Print(pad_right(names[i], name_col_width)),
+                        SetStyle(reset),
+                        SetForegroundColor(if installed { Color::Green } else { Color::DarkGrey }),
+                        Print(format!("  {}", pad_right(&cur_str, cur_col_width))),
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(format!("  {}", size_str)),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                }
+                row += 1;
             }
-            row += 1;
-        }
 
-        // ── Scroll indicator (below) ──
-        let below = total - end;
-        if below > 0 {
+            // ── Scroll indicator (below) ──
+            let below = total - end;
+            if below > 0 {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(format!("  ↓ {} more below", below)),
+                    SetForegroundColor(Color::Reset)
+                )?;
+                row += 1;
+            }
+
+            // ── Footer ──
             queue!(
                 stdout,
                 MoveTo(0, row),
                 Clear(ClearType::CurrentLine),
                 SetForegroundColor(Color::DarkGrey),
-                Print(format!("  ↓ {} more below", below)),
+                Print(format!("  {}", DIVIDER)),
                 SetForegroundColor(Color::Reset)
             )?;
             row += 1;
-        }
 
-        // ── Footer ──
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  {}", DIVIDER)),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // Keybindings
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print("  "),
-            SetForegroundColor(Color::Green),
-            Print("↑↓/jk nav  "),
-            SetForegroundColor(Color::Yellow),
-            Print("Enter:browse  r:remote  "),
-            SetForegroundColor(Color::DarkGrey),
-            Print("q/Ctrl+C:quit"),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // Rotating tip（与 msg 分离：随机轮播内容；第一层用专属按键提示）
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  💡 {}", SDK_SELECTOR_TIPS[tip_idx])),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // 持久消息区（操作反馈，最底行 + 亮红醒目；空串跳过）
-        if !msg.is_empty() {
+            // Keybindings
             queue!(
                 stdout,
                 MoveTo(0, row),
                 Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::Red),
-                SetStyle(bold),
-                Print(format!("  ⚑ {}", msg)),
-                SetStyle(reset),
+                SetForegroundColor(Color::DarkGrey),
+                Print("  "),
+                SetForegroundColor(Color::Green),
+                Print("↑↓/jk nav  "),
+                SetForegroundColor(Color::Yellow),
+                Print("Enter:browse  r:remote  "),
+                SetForegroundColor(Color::DarkGrey),
+                Print("q/Ctrl+C:quit"),
                 SetForegroundColor(Color::Reset)
             )?;
-        }
+            row += 1;
 
-        try_bug!(stdout.flush().context("Failed to flush stdout"));
+            // Rotating tip（与 msg 分离：随机轮播内容；第一层用专属按键提示）
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::DarkGrey),
+                Print(format!("  💡 {}", SDK_SELECTOR_TIPS[tip_idx])),
+                SetForegroundColor(Color::Reset)
+            )?;
+            row += 1;
+
+            // 持久消息区（操作反馈，最底行 + 亮红醒目；空串跳过）
+            if !msg.is_empty() {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::Red),
+                    SetStyle(bold),
+                    Print(format!("  ⚑ {}", msg)),
+                    SetStyle(reset),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            }
+
+            // 本帧行数少于上一帧时清掉尾部残留（frame 内容不变时整体跳过）
+            queue!(stdout, Clear(ClearType::FromCursorDown))?;
+            try_bug!(stdout.flush().context("Failed to flush stdout"));
+        }
 
         // size 未算完时短轮询尽快回填，算完回退 3s（仅 tip 轮换）
         let pending = live_sizes.lock().ok().is_some_and(|g| g.iter().any(Option::is_none));
+        let done = live_sizes
+            .lock()
+            .ok()
+            .map_or(total, |g| g.iter().filter(|s| s.is_some()).count());
         let poll_timeout = if pending {
             Duration::from_millis(120)
         } else {
@@ -476,10 +488,12 @@ fn run_sdk_selector_inner(
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         selected = selected.saturating_sub(1);
+                        need_redraw = true;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if selected < total - 1 {
                             selected += 1;
+                            need_redraw = true;
                         }
                     }
                     KeyCode::Enter => {
@@ -504,6 +518,12 @@ fn run_sdk_selector_inner(
                     _ => {}
                 }
             }
+        }
+        // size 有新回填或 3s 超时（tip 轮换）才重绘；空轮询保持画面不动
+        let size_changed = done > last_done;
+        if size_changed || !ev {
+            need_redraw = true;
+            last_done = done;
         }
         tip_idx = (tip_idx + 1) % SDK_SELECTOR_TIPS.len();
     };
@@ -557,6 +577,10 @@ fn run_selector_inner(
             .context("Failed to setup TUI mode")
     );
 
+    // 增量重绘：仅状态变化（按键导航/size 回填/tip 轮换）时重画，空轮询不清屏避免闪烁
+    let mut need_redraw = true;
+    let mut last_done = 0usize;
+
     let result = loop {
         // ── Clamp scroll so selected stays inside visible window ──
         if selected < scroll_offset {
@@ -565,178 +589,180 @@ fn run_selector_inner(
             scroll_offset = selected - visible + 1;
         }
 
-        // ── Render frame ──
-        queue!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+        if need_redraw {
+            // ── Render frame ──
+            queue!(stdout, MoveTo(0, 0))?;
 
-        let bold = ContentStyle::new().attribute(Attribute::Bold);
-        let reset = ContentStyle::new();
+            let bold = ContentStyle::new().attribute(Attribute::Bold);
+            let reset = ContentStyle::new();
 
-        // ── Header ──
-        let mut row: u16 = 0;
+            // ── Header ──
+            let mut row: u16 = 0;
 
-        // Title
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::Cyan),
-            SetStyle(bold),
-            Print(format!("  {} · {}", sdk_name, title)),
-            SetStyle(reset),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // Source URL (remote only)
-        if let Some(url) = source_url {
-            let (_, cols) = crossterm::terminal::size().unwrap_or((24, 80));
+            // Title
             queue!(
                 stdout,
                 MoveTo(0, row),
                 Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::DarkGrey),
-                Print(format!("  Source: {}", truncate_url(url, cols))),
+                SetForegroundColor(Color::Cyan),
+                SetStyle(bold),
+                Print(format!("  {} · {}", sdk_name, title)),
+                SetStyle(reset),
                 SetForegroundColor(Color::Reset)
             )?;
             row += 1;
-        }
 
-        // Divider
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  {}", DIVIDER)),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // ── Scroll indicator (above items) ──
-        let above = scroll_offset;
-        if above > 0 {
-            queue!(
-                stdout,
-                MoveTo(0, row),
-                Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::DarkGrey),
-                Print(format!("  ↑ {} more above", above)),
-                SetForegroundColor(Color::Reset)
-            )?;
-            row += 1;
-        }
-
-        // ── Items (table layout, fixed visible window) ──
-        let end = (scroll_offset + visible).min(total);
-        for i in scroll_offset..end {
-            // Status column with unicode-aware padding for terminal column alignment
-            let status_mark = if is_active[i] {
-                STATUS_ACTIVE
-            } else if is_installed[i] {
-                STATUS_INSTALLED
-            } else {
-                " "
-            };
-            let status_col = pad_status(status_mark);
-
-            // 版本列左对齐 pad 到 version_col_width；本地列表追加 size 列（live：算完显值，未算显 "…"）
-            let version_padded = pad_right(versions[i], version_col_width);
-            let text = match &live_sizes {
-                Some(ls) => format!("{}{}  {}", status_col, version_padded, live_size_str(ls, i)),
-                None => format!("{}{}", status_col, version_padded),
-            };
-
-            queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
-
-            if i == selected {
-                // Highlighted row: pointer + DarkCyan bg
+            // Source URL (remote only)
+            if let Some(url) = source_url {
                 queue!(
                     stdout,
-                    SetBackgroundColor(Color::DarkCyan),
-                    SetForegroundColor(Color::White),
-                    SetStyle(bold),
-                    Print(format!("  ▸ {}", text)),
-                    SetStyle(reset),
-                    SetBackgroundColor(Color::Reset),
-                    SetForegroundColor(Color::Reset)
-                )?;
-            } else if is_installed[i] {
-                // Installed (non-selected): green fg to stand out
-                queue!(
-                    stdout,
-                    SetForegroundColor(Color::Green),
-                    Print(format!("    {}", text)),
-                    SetForegroundColor(Color::Reset)
-                )?;
-            } else {
-                // Not installed: dim dark grey fg
-                queue!(
-                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
                     SetForegroundColor(Color::DarkGrey),
-                    Print(format!("    {}", text)),
+                    Print(format!("  Source: {}", truncate_url(url))),
                     SetForegroundColor(Color::Reset)
                 )?;
+                row += 1;
             }
-            row += 1;
-        }
 
-        // ── Scroll indicator (below items) ──
-        let below = total - end;
-        if below > 0 {
+            // Divider
             queue!(
                 stdout,
                 MoveTo(0, row),
                 Clear(ClearType::CurrentLine),
                 SetForegroundColor(Color::DarkGrey),
-                Print(format!("  ↓ {} more below", below)),
+                Print(format!("  {}", DIVIDER)),
                 SetForegroundColor(Color::Reset)
             )?;
             row += 1;
+
+            // ── Scroll indicator (above items) ──
+            let above = scroll_offset;
+            if above > 0 {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(format!("  ↑ {} more above", above)),
+                    SetForegroundColor(Color::Reset)
+                )?;
+                row += 1;
+            }
+
+            // ── Items (table layout, fixed visible window) ──
+            let end = (scroll_offset + visible).min(total);
+            for i in scroll_offset..end {
+                // Status column with unicode-aware padding for terminal column alignment
+                let status_mark = if is_active[i] {
+                    STATUS_ACTIVE
+                } else if is_installed[i] {
+                    STATUS_INSTALLED
+                } else {
+                    " "
+                };
+                let status_col = pad_status(status_mark);
+
+                // 版本列左对齐 pad 到 version_col_width；本地列表追加 size 列（live：算完显值，未算显 "…"）
+                let version_padded = pad_right(versions[i], version_col_width);
+                let text = match &live_sizes {
+                    Some(ls) => format!("{}{}  {}", status_col, version_padded, live_size_str(ls, i)),
+                    None => format!("{}{}", status_col, version_padded),
+                };
+
+                queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
+
+                if i == selected {
+                    // Highlighted row: pointer + DarkCyan bg
+                    queue!(
+                        stdout,
+                        SetBackgroundColor(Color::DarkCyan),
+                        SetForegroundColor(Color::White),
+                        SetStyle(bold),
+                        Print(format!("  ▸ {}", text)),
+                        SetStyle(reset),
+                        SetBackgroundColor(Color::Reset),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                } else if is_installed[i] {
+                    // Installed (non-selected): green fg to stand out
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::Green),
+                        Print(format!("    {}", text)),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                } else {
+                    // Not installed: dim dark grey fg
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(format!("    {}", text)),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                }
+                row += 1;
+            }
+
+            // ── Scroll indicator (below items) ──
+            let below = total - end;
+            if below > 0 {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(format!("  ↓ {} more below", below)),
+                    SetForegroundColor(Color::Reset)
+                )?;
+                row += 1;
+            }
+
+            // ── Footer ──
+            // Divider
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::DarkGrey),
+                Print(format!("  {}", DIVIDER)),
+                SetForegroundColor(Color::Reset)
+            )?;
+            row += 1;
+
+            // Keybindings — clarify which keys work on which rows
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::DarkGrey),
+                Print("  "),
+                SetForegroundColor(Color::Green),
+                Print("↑↓/jk nav  "),
+                SetForegroundColor(Color::Yellow),
+                Print("i:install(remote)  "),
+                SetForegroundColor(Color::DarkGrey),
+                Print("Enter/s:switch(installed)  "),
+                SetForegroundColor(Color::Red),
+                Print("del/d:uninstall(installed)  q/Ctrl+C:quit"),
+                SetForegroundColor(Color::Reset)
+            )?;
+            row += 1;
+
+            // Rotating tip
+            queue!(
+                stdout,
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                SetForegroundColor(Color::DarkGrey),
+                Print(format!("  💡 {}", TUI_TIPS[tip_idx])),
+                SetForegroundColor(Color::Reset)
+            )?;
+
+            // 本帧行数少于上一帧时清掉尾部残留（frame 内容不变时整体跳过）
+            queue!(stdout, Clear(ClearType::FromCursorDown))?;
+            try_bug!(stdout.flush().context("Failed to flush stdout"));
         }
-
-        // ── Footer ──
-        // Divider
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  {}", DIVIDER)),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // Keybindings — clarify which keys work on which rows
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print("  "),
-            SetForegroundColor(Color::Green),
-            Print("↑↓/jk nav  "),
-            SetForegroundColor(Color::Yellow),
-            Print("i:install(remote)  "),
-            SetForegroundColor(Color::DarkGrey),
-            Print("Enter/s:switch(installed)  "),
-            SetForegroundColor(Color::Red),
-            Print("del/d:uninstall(installed)  q/Ctrl+C:quit"),
-            SetForegroundColor(Color::Reset)
-        )?;
-        row += 1;
-
-        // Rotating tip
-        queue!(
-            stdout,
-            MoveTo(0, row),
-            Clear(ClearType::CurrentLine),
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("  💡 {}", TUI_TIPS[tip_idx])),
-            SetForegroundColor(Color::Reset)
-        )?;
-
-        // Single flush — everything drawn at once, no partial states
-        try_bug!(stdout.flush().context("Failed to flush stdout"));
 
         // ── Event loop ──
         // size 尚未算完时短轮询（120ms）让回填尽快刷到屏；全部算完回退 3s（仅 tip 轮换）
@@ -744,6 +770,10 @@ fn run_selector_inner(
             .as_ref()
             .and_then(|ls| ls.lock().ok())
             .is_some_and(|g| g.iter().any(Option::is_none));
+        let done = live_sizes
+            .as_ref()
+            .and_then(|ls| ls.lock().ok())
+            .map_or(0usize, |g| g.iter().filter(|s| s.is_some()).count());
         let poll_timeout = if pending {
             Duration::from_millis(120)
         } else {
@@ -762,10 +792,12 @@ fn run_selector_inner(
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         selected = selected.saturating_sub(1);
+                        need_redraw = true;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if selected < total - 1 {
                             selected += 1;
+                            need_redraw = true;
                         }
                     }
                     KeyCode::Enter | KeyCode::Char('s') => {
@@ -797,6 +829,12 @@ fn run_selector_inner(
                 }
             }
         }
+        // size 有新回填或 3s 超时（tip 轮换）才重绘；空轮询保持画面不动
+        let size_changed = done > last_done;
+        if size_changed || !ev {
+            need_redraw = true;
+            last_done = done;
+        }
         tip_idx = (tip_idx + 1) % TUI_TIPS.len();
     };
 
@@ -822,12 +860,14 @@ fn live_size_str(ls: &Mutex<Vec<Option<u64>>>, i: usize) -> String {
     }
 }
 
-/// Truncate URL to fit terminal width
-fn truncate_url(url: &str, max_cols: u16) -> String {
-    let max = max_cols as usize - 12; // "  Source: " prefix + margin
-    if url.len() <= max {
+/// 截取 URL 到 Divider 等宽（前缀 "  Source: " 后与之右端对齐），超长用省略号
+fn truncate_url(url: &str) -> String {
+    // DIVIDER 缩进 2 + 前缀宽度，剩余给 URL；"..." 占 3
+    let max = DIVIDER.chars().count() - 2 - "Source: ".len() - 3;
+    if url.chars().count() <= max {
         url.to_string()
     } else {
-        format!("{}...", &url[..max.saturating_sub(3)])
+        let prefix: String = url.chars().take(max).collect();
+        format!("{}...", prefix)
     }
 }
