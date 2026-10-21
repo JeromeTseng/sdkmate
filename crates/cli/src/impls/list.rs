@@ -69,8 +69,12 @@ impl CommandHandler for ListHandler {
             // 远程 SDK → TTY spinner + 交互式版本选择器；非 TTY 文本列表
             (Some(sdk_name), true) => {
                 let sdk = manager.match_valid_sdk(sdk_name)?;
-                let RemoteVersionResult { items, total_count } = manager.fetch_remote_version_list(&sdk, self.limit)?;
-                if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+                // TTY 走 TUI 拿全量列表（搜索按全量过滤，--limit 不生效）；非 TTY 文本输出按 --limit 截断
+                let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+                let fetch_limit = if tty { u32::MAX } else { self.limit };
+                let RemoteVersionResult { items, total_count } =
+                    manager.fetch_remote_version_list(&sdk, fetch_limit)?;
+                if tty {
                     let action = run_remote_selector(&sdk.to_string(), &items, self.limit, total_count)?;
                     self.execute_action(action, &sdk)
                 } else {
@@ -125,8 +129,9 @@ impl ListHandler {
                 }
                 SdkSelectorAction::BrowseRemote { sdk } => {
                     // 拉取失败（无版本发现源/网络错）→ msg 带回第一层消息区
+                    // TUI 拿全量列表（搜索按全量过滤）；--limit 只作用于非 TTY 文本输出
                     let RemoteVersionResult { items, total_count } =
-                        match manager.fetch_remote_version_list(&sdk, self.limit) {
+                        match manager.fetch_remote_version_list(&sdk, u32::MAX) {
                             Ok(r) => r,
                             Err(e) => {
                                 msg = e.to_string();

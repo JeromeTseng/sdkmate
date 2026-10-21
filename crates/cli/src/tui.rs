@@ -203,7 +203,6 @@ fn run_sdk_selector_inner(
     let mut selected = 0;
     let mut scroll_offset = 0;
     let mut tip_idx = 0;
-    let visible = MAX_VISIBLE.min(total);
     // 底部持久消息（操作反馈，无随机性；空串 = 不显示）
     let mut msg = initial_msg;
 
@@ -231,11 +230,27 @@ fn run_sdk_selector_inner(
     let mut need_redraw = true;
     let mut last_done = 0usize;
 
+    // f 键搜索：query 为空 = 未过滤；搜索态下字符输入实时过滤，Enter 应用、Esc 清空
+    let mut search_mode = false;
+    let mut query = String::new();
+    // 过滤后的行索引映射（None = 无过滤，直接用全量顺序）
+    let mut filtered: Option<Vec<usize>> = None;
+
     let result = loop {
+        // 应用过滤：重建行索引映射；过滤态下夹取选中/滚动到有效范围
+        let indices: Vec<usize> = match &filtered {
+            Some(idx) => idx.clone(),
+            None => (0..total).collect(),
+        };
+        let view_total = indices.len();
+        let view_visible = MAX_VISIBLE.min(view_total.max(1));
+        if selected >= view_total {
+            selected = view_total.saturating_sub(1);
+        }
         if selected < scroll_offset {
             scroll_offset = selected;
-        } else if selected >= scroll_offset + visible {
-            scroll_offset = selected - visible + 1;
+        } else if selected >= scroll_offset + view_visible {
+            scroll_offset = selected - view_visible + 1;
         }
 
         if need_redraw {
@@ -320,10 +335,11 @@ fn run_sdk_selector_inner(
             }
 
             // ── Items ──
-            let end = (scroll_offset + visible).min(total);
-            for i in scroll_offset..end {
-                // 已安装组结束后画一条虚点分组线（首次进入视野时；虚点弱于实线，表意"同列表的软分隔"）
-                if i == boundary_installed && boundary_installed > 0 {
+            let end = (scroll_offset + view_visible).min(view_total);
+            for (vi, &i) in indices[scroll_offset..end].iter().enumerate() {
+                let vi = vi + scroll_offset;
+                // 过滤态下分组线规则失效（原分界行号对应全量序），仅无过滤时画
+                if filtered.is_none() && vi == boundary_installed && boundary_installed > 0 {
                     queue!(
                         stdout,
                         MoveTo(0, row),
@@ -351,7 +367,7 @@ fn run_sdk_selector_inner(
 
                 queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
 
-                if i == selected {
+                if vi == selected {
                     // 选中行：高亮背景只盖前缀区（指针 + mark + 序号），sdk 列开始提亮（sdk 亮白粗/current 亮绿）
                     queue!(
                         stdout,
@@ -393,7 +409,7 @@ fn run_sdk_selector_inner(
             }
 
             // ── Scroll indicator (below) ──
-            let below = total - end;
+            let below = view_total - end;
             if below > 0 {
                 queue!(
                     stdout,
@@ -417,32 +433,68 @@ fn run_sdk_selector_inner(
             )?;
             row += 1;
 
-            // Keybindings
-            queue!(
-                stdout,
-                MoveTo(0, row),
-                Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::DarkGrey),
-                Print("  "),
-                SetForegroundColor(Color::Green),
-                Print("↑↓/jk nav  "),
-                SetForegroundColor(Color::Yellow),
-                Print("Enter:browse  r:remote  "),
-                SetForegroundColor(Color::DarkGrey),
-                Print("q/Ctrl+C:quit"),
-                SetForegroundColor(Color::Reset)
-            )?;
+            // Keybindings（搜索态换成输入行；过滤生效时 tip 行显示命中数）
+            if search_mode {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::Cyan),
+                    SetStyle(bold),
+                    Print(format!("  Search: {}▊", query)),
+                    SetStyle(reset),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("  (Enter:apply  Esc:cancel  Backspace:delete)"),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            } else {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("  "),
+                    SetForegroundColor(Color::Green),
+                    Print("↑↓/jk nav  "),
+                    SetForegroundColor(Color::Yellow),
+                    Print("f:search  "),
+                    SetForegroundColor(Color::White),
+                    Print("Enter:browse  "),
+                    SetForegroundColor(Color::Yellow),
+                    Print("r:remote  "),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("q/Ctrl+C:quit"),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            }
             row += 1;
 
-            // Rotating tip（与 msg 分离：随机轮播内容；第一层用专属按键提示）
-            queue!(
-                stdout,
-                MoveTo(0, row),
-                Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::DarkGrey),
-                Print(format!("  💡 {}", SDK_SELECTOR_TIPS[tip_idx])),
-                SetForegroundColor(Color::Reset)
-            )?;
+            // Rotating tip（与 msg 分离：随机轮播内容；过滤生效时换成命中数）
+            let is_filtered = filtered.as_ref().is_some_and(|f| f.len() < total);
+            if is_filtered {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::Cyan),
+                    Print(format!(
+                        "  {}/{} match{}  (Esc to clear)",
+                        view_total,
+                        total,
+                        if view_total == 1 { "" } else { "es" }
+                    )),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            } else {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(format!("  💡 {}", SDK_SELECTOR_TIPS[tip_idx])),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            }
             row += 1;
 
             // 持久消息区（操作反馈，最底行 + 亮红醒目；空串跳过）
@@ -484,17 +536,63 @@ fn run_sdk_selector_inner(
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                     break SdkSelectorAction::Quit;
                 }
-                let item = ordered[selected];
+                // 搜索态：字符输入实时过滤，Enter 应用、Esc 取消回浏览态；q 是普通字符不退出
+                if search_mode {
+                    match key.code {
+                        KeyCode::Enter => {
+                            search_mode = false;
+                            need_redraw = true;
+                        }
+                        KeyCode::Esc => {
+                            search_mode = false;
+                            query.clear();
+                            filtered = None;
+                            selected = 0;
+                            scroll_offset = 0;
+                            need_redraw = true;
+                        }
+                        KeyCode::Backspace => {
+                            query.pop();
+                            apply_sdk_filter(&mut filtered, &mut selected, &mut scroll_offset, &query, ordered);
+                            need_redraw = true;
+                        }
+                        KeyCode::Char(c) => {
+                            query.push(c);
+                            apply_sdk_filter(&mut filtered, &mut selected, &mut scroll_offset, &query, ordered);
+                            need_redraw = true;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                // 过滤可能无结果（view_total=0），此时仅允许 f/Esc/q/Ctrl+C，跳过选中项操作
+                if view_total == 0 {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => break SdkSelectorAction::Quit,
+                        KeyCode::Char('f') => {
+                            search_mode = true;
+                            need_redraw = true;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                let item = ordered[indices[selected]];
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         selected = selected.saturating_sub(1);
                         need_redraw = true;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        if selected < total - 1 {
+                        if selected + 1 < view_total {
                             selected += 1;
                             need_redraw = true;
                         }
+                    }
+                    KeyCode::Char('f') => {
+                        // 进入搜索态：保留当前过滤词可续编（Esc 才清空）
+                        search_mode = true;
+                        need_redraw = true;
                     }
                     KeyCode::Enter => {
                         // 已安装 → 本地版本 TUI；未安装 → 远程 TUI（无版本发现源提示后留在原地）
@@ -512,7 +610,19 @@ fn run_sdk_selector_inner(
                         }
                         msg = format!("{} has no version discovery source, cannot browse remotely", item.name);
                     }
-                    KeyCode::Esc | KeyCode::Char('q') => {
+                    // Esc 语义分流：过滤生效时先清过滤，无过滤才退出
+                    KeyCode::Esc => {
+                        if filtered.is_some() {
+                            filtered = None;
+                            query.clear();
+                            selected = 0;
+                            scroll_offset = 0;
+                            need_redraw = true;
+                        } else {
+                            break SdkSelectorAction::Quit;
+                        }
+                    }
+                    KeyCode::Char('q') => {
                         break SdkSelectorAction::Quit;
                     }
                     _ => {}
@@ -564,7 +674,6 @@ fn run_selector_inner(
     let mut selected = find_default_selection(&is_active);
     let mut scroll_offset = 0;
     let mut tip_idx = 0;
-    let visible = MAX_VISIBLE.min(total);
 
     // 版本列宽度：取所有版本字符串的最大显示宽度，左对齐 pad 保证 size 列对齐
     let version_col_width = versions.iter().map(|v| v.width()).max().unwrap_or(0);
@@ -581,12 +690,29 @@ fn run_selector_inner(
     let mut need_redraw = true;
     let mut last_done = 0usize;
 
+    // f 键搜索：query 为空 = 未过滤；搜索态下字符输入实时过滤，Enter 应用、Esc 清空
+    let mut search_mode = false;
+    let mut query = String::new();
+    // 过滤后的行索引映射（None = 无过滤，直接用全量顺序）
+    let mut filtered: Option<Vec<usize>> = None;
+
     let result = loop {
+        // 应用过滤：重建行索引映射；过滤态下夹取选中/滚动到有效范围
+        let indices: Vec<usize> = match &filtered {
+            Some(idx) => idx.clone(),
+            None => (0..total).collect(),
+        };
+        let view_total = indices.len();
+        let view_visible = MAX_VISIBLE.min(view_total.max(1));
+        if selected >= view_total {
+            selected = view_total.saturating_sub(1);
+        }
+
         // ── Clamp scroll so selected stays inside visible window ──
         if selected < scroll_offset {
             scroll_offset = selected;
-        } else if selected >= scroll_offset + visible {
-            scroll_offset = selected - visible + 1;
+        } else if selected >= scroll_offset + view_visible {
+            scroll_offset = selected - view_visible + 1;
         }
 
         if need_redraw {
@@ -651,8 +777,9 @@ fn run_selector_inner(
             }
 
             // ── Items (table layout, fixed visible window) ──
-            let end = (scroll_offset + visible).min(total);
-            for i in scroll_offset..end {
+            let end = (scroll_offset + view_visible).min(view_total);
+            for (vi, &i) in indices[scroll_offset..end].iter().enumerate() {
+                let vi = vi + scroll_offset;
                 // Status column with unicode-aware padding for terminal column alignment
                 let status_mark = if is_active[i] {
                     STATUS_ACTIVE
@@ -672,7 +799,7 @@ fn run_selector_inner(
 
                 queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
 
-                if i == selected {
+                if vi == selected {
                     // Highlighted row: pointer + DarkCyan bg
                     queue!(
                         stdout,
@@ -705,7 +832,7 @@ fn run_selector_inner(
             }
 
             // ── Scroll indicator (below items) ──
-            let below = total - end;
+            let below = view_total - end;
             if below > 0 {
                 queue!(
                     stdout,
@@ -730,34 +857,66 @@ fn run_selector_inner(
             )?;
             row += 1;
 
-            // Keybindings — clarify which keys work on which rows
-            queue!(
-                stdout,
-                MoveTo(0, row),
-                Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::DarkGrey),
-                Print("  "),
-                SetForegroundColor(Color::Green),
-                Print("↑↓/jk nav  "),
-                SetForegroundColor(Color::Yellow),
-                Print("i:install(remote)  "),
-                SetForegroundColor(Color::DarkGrey),
-                Print("Enter/s:switch(installed)  "),
-                SetForegroundColor(Color::Red),
-                Print("del/d:uninstall(installed)  q/Ctrl+C:quit"),
-                SetForegroundColor(Color::Reset)
-            )?;
+            // Keybindings — clarify which keys work on which rows（搜索态换成输入行）
+            if search_mode {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::Cyan),
+                    SetStyle(bold),
+                    Print(format!("  Search: {}▊", query)),
+                    SetStyle(reset),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("  (Enter:apply  Esc:cancel  Backspace:delete)"),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            } else {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("  "),
+                    SetForegroundColor(Color::Green),
+                    Print("↑↓/jk nav  "),
+                    SetForegroundColor(Color::Yellow),
+                    Print("f:search  i:install(remote)  "),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("Enter/s:switch(installed)  "),
+                    SetForegroundColor(Color::Red),
+                    Print("del/d:uninstall(installed)  q/Ctrl+C:quit"),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            }
             row += 1;
 
-            // Rotating tip
-            queue!(
-                stdout,
-                MoveTo(0, row),
-                Clear(ClearType::CurrentLine),
-                SetForegroundColor(Color::DarkGrey),
-                Print(format!("  💡 {}", TUI_TIPS[tip_idx])),
-                SetForegroundColor(Color::Reset)
-            )?;
+            // Rotating tip（过滤生效时换成命中数）
+            let is_filtered = filtered.as_ref().is_some_and(|f| f.len() < total);
+            if is_filtered {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::Cyan),
+                    Print(format!(
+                        "  {}/{} match{}  (Esc to clear)",
+                        view_total,
+                        total,
+                        if view_total == 1 { "" } else { "es" }
+                    )),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            } else {
+                queue!(
+                    stdout,
+                    MoveTo(0, row),
+                    Clear(ClearType::CurrentLine),
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(format!("  💡 {}", TUI_TIPS[tip_idx])),
+                    SetForegroundColor(Color::Reset)
+                )?;
+            }
 
             // 本帧行数少于上一帧时清掉尾部残留（frame 内容不变时整体跳过）
             queue!(stdout, Clear(ClearType::FromCursorDown))?;
@@ -789,40 +948,101 @@ fn run_selector_inner(
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                     break SelectorAction::Quit;
                 }
+                // 搜索态：字符输入实时过滤，Enter 应用、Esc 取消回浏览态；q/i/s/d 是普通字符不触发动作
+                if search_mode {
+                    match key.code {
+                        KeyCode::Enter => {
+                            search_mode = false;
+                            need_redraw = true;
+                        }
+                        KeyCode::Esc => {
+                            search_mode = false;
+                            query.clear();
+                            filtered = None;
+                            selected = find_default_selection(&is_active);
+                            scroll_offset = 0;
+                            need_redraw = true;
+                        }
+                        KeyCode::Backspace => {
+                            query.pop();
+                            apply_version_filter(&mut filtered, &mut selected, &mut scroll_offset, &query, &versions);
+                            need_redraw = true;
+                        }
+                        KeyCode::Char(c) => {
+                            query.push(c);
+                            apply_version_filter(&mut filtered, &mut selected, &mut scroll_offset, &query, &versions);
+                            need_redraw = true;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                // 过滤可能无结果（view_total=0），此时仅允许 f/Esc/q/Ctrl+C
+                if view_total == 0 {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => break SelectorAction::Quit,
+                        KeyCode::Char('f') => {
+                            search_mode = true;
+                            need_redraw = true;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         selected = selected.saturating_sub(1);
                         need_redraw = true;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        if selected < total - 1 {
+                        if selected + 1 < view_total {
                             selected += 1;
                             need_redraw = true;
                         }
                     }
+                    KeyCode::Char('f') => {
+                        // 进入搜索态：保留当前过滤词可续编（Esc 才清空）
+                        search_mode = true;
+                        need_redraw = true;
+                    }
                     KeyCode::Enter | KeyCode::Char('s') => {
-                        if is_installed[selected] || is_active[selected] {
+                        let i = indices[selected];
+                        if is_installed[i] || is_active[i] {
                             break SelectorAction::Switch {
-                                version: versions[selected].to_string(),
+                                version: versions[i].to_string(),
                             };
                         }
                     }
                     KeyCode::Char('i') => {
-                        if is_not_installed[selected] {
+                        let i = indices[selected];
+                        if is_not_installed[i] {
                             break SelectorAction::Install {
-                                version: versions[selected].to_string(),
+                                version: versions[i].to_string(),
                             };
                         }
                     }
                     KeyCode::Delete | KeyCode::Char('d') => {
                         // 仅已安装版本可卸载（本地列表全部可卸载；远程仅已安装）
-                        if is_installed[selected] || is_active[selected] {
+                        let i = indices[selected];
+                        if is_installed[i] || is_active[i] {
                             break SelectorAction::Uninstall {
-                                version: versions[selected].to_string(),
+                                version: versions[i].to_string(),
                             };
                         }
                     }
-                    KeyCode::Esc | KeyCode::Char('q') => {
+                    // Esc 语义分流：过滤生效时先清过滤，无过滤才退出
+                    KeyCode::Esc => {
+                        if filtered.is_some() {
+                            filtered = None;
+                            query.clear();
+                            selected = find_default_selection(&is_active);
+                            scroll_offset = 0;
+                            need_redraw = true;
+                        } else {
+                            break SelectorAction::Quit;
+                        }
+                    }
+                    KeyCode::Char('q') => {
                         break SelectorAction::Quit;
                     }
                     _ => {}
@@ -870,4 +1090,54 @@ fn truncate_url(url: &str) -> String {
         let prefix: String = url.chars().take(max).collect();
         format!("{}...", prefix)
     }
+}
+
+/// 第一层 SDK 列表过滤：按 sdk 名大小写不敏感子串匹配，重建行索引映射并复位选中/滚动
+fn apply_sdk_filter(
+    filtered: &mut Option<Vec<usize>>,
+    selected: &mut usize,
+    scroll_offset: &mut usize,
+    query: &str,
+    ordered: &[&RegisteredSdkItem],
+) {
+    let q = query.to_lowercase();
+    if q.is_empty() {
+        *filtered = None;
+    } else {
+        *filtered = Some(
+            ordered
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| item.name.to_lowercase().contains(&q))
+                .map(|(i, _)| i)
+                .collect(),
+        );
+    }
+    *selected = 0;
+    *scroll_offset = 0;
+}
+
+/// 版本列表过滤：按版本号大小写不敏感子串匹配，重建行索引映射并复位选中/滚动
+fn apply_version_filter(
+    filtered: &mut Option<Vec<usize>>,
+    selected: &mut usize,
+    scroll_offset: &mut usize,
+    query: &str,
+    versions: &[&str],
+) {
+    let q = query.to_lowercase();
+    if q.is_empty() {
+        *filtered = None;
+    } else {
+        *filtered = Some(
+            versions
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| v.to_lowercase().contains(&q))
+                .map(|(i, _)| i)
+                .collect(),
+        );
+    }
+    *selected = 0;
+    *scroll_offset = 0;
 }
