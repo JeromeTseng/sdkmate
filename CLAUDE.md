@@ -101,23 +101,17 @@ bin_dir = "bin"
 
 > **维护规则**：本节只保留最新一次改动，每次完成后**整体替换**（不是追加），文件体积不随历史增长。
 
-### 2026-10-21 —— builtin 第三波 8 种子（数据库/中间件）+ python 主源 URL 修复
+### 2026-10-21 —— TUI 增量重绘修复闪烁 + 两层选择器 f 键搜索（全量版本过滤）
 
-回应诉求：种子准入提门槛——**语言→数据库→中间件优先，常用、mega-famous（star ≥ 15k）**，冷门 CLI 工具不再扩容（上一轮调研的 zoxide/hyperfine/helix 等 20+ 候选全部砍掉，仅保留 starship 57k）。
+**闪烁修复**（`tui.rs` 两个 selector 循环同款）：根因是每轮循环 `Clear(ClearType::All)` 全屏重绘 + size 回填期 120ms 短轮询驱动（SDK 多时连续闪数秒，tip 也跟着 120ms 一换）。改为**增量重绘**：`need_redraw` 脏标记，仅按键导航/size 新回填（`done > last_done` 计数）/3s 超时（tip 轮换）才重画；去掉每帧 `Clear(All)`，帧尾 `Clear(FromCursorDown)` 清尾部残留。
 
-**新增 8 种子**（全部 GH API 实测资产名 + zip 布局解包验证）：
+**f 键搜索**（两层 TUI 都有）：`f` 进搜索态 → 底部 keybinding 行变 `Search: xxx▊` 输入行（大小写不敏感子串实时过滤）→ Enter 应用保留过滤态 / Esc 清空恢复全列表。**Esc 语义分流**：过滤生效时先清过滤、无过滤才退 TUI；搜索态里 `q`/`i`/`s`/`d` 都是普通字符不触发动作；Ctrl+C 任何时刻退出。过滤后序号保留全量编号、分组线仅无过滤时画、无结果时仅 f/Esc/q 可按。
 
-- 新文件 `builtin/data.rs`（数据库/中间件类）：**duckdb**（标准 B，`.prefix("duckdb_cli")`，libduckdb-* 被前缀门排除）、**etcd**（标准 B，zip 顶层目录提升后 etcd/etcdctl/etcdutl 三命令）、**caddy**（标准 B，buildable-artifact 源码包被未识别段排除）、**traefik**（标准 B，.src.tar.gz 被 "src" 段排除）+ **vault/consul/packer**（组合模式完整字面量，仿 terraform：GH release 无资产 → 落 releases.hashicorp.com 模板，ArchStyle::Go）
-- `builtin/cli.rs` 追加 **starship**（标准 B）；`builtin/mod.rs` 注册 `mod data` + SDK_SEEDS 第三波段；准入门槛注释更新为「语言/数据库/中间件优先，star ≥ 15k 或 mega-famous」
-- 内置总数 33 → **41**
+**版本搜索是全量检索**：`fetch_remote_versions_async` 本来就拉全量（python 122 个），原来 `items[..limit]` 在进 TUI 前截断。现改 `impls/list.rs`：TTY 路径 `fetch_remote_version_list(&sdk, u32::MAX)` 全量传 TUI，**`--limit` 退化为仅非 TTY 文本输出参数**；TUI 头部 "showing N" 改为过滤时显示 `N/M matches (Esc to clear)`。
 
-**python 主源修复**：uv 把 download-metadata.json 从 `crates/uv-python/` 迁至 `crates/uv-python-managed/`，旧 URL 404（一直被 GH Releases 备源顶着未暴露）。core.rs 一行修复，schema 实测兼容（同一生成器）。
+**实现要点**：`filtered: Option<Vec<usize>>` 行索引映射（None=全量顺序），循环头每轮重建 `indices`/`view_total`/`view_visible` 并夹取 selected/scroll_offset；事件处理经 `indices[selected]` 映射回全量下标；`view_total=0` 防下溢（`selected + 1 < view_total` 替代 `selected < total - 1`）。`apply_sdk_filter`（按 sdk 名）/`apply_version_filter`（按版本号）两个辅助函数。clippy `needless_range_loop` 用 `indices[range].iter().enumerate()` 过。
 
-**关键排除结论**（防重复调研）：语言类仅 zig 理论可接但需三处引擎小改（tar.xz 解压 + zig 命名风格，且 ziglang.org 国内下载实测超时）——暂缓；dart 无 GH release；mysql/postgres/redis/mongo 均无官方 GH 二进制；nacos 是 Java 包结构非单二进制；minio 裸二进制无压缩包；vault 等的裸二进制系（jq/mkcert/sops/cosign）需引擎新增「裸二进制下载」能力才能接——最大未来扩展点。
-
-**网络实测结论（无梯子真实国内网络）**：api.github.com 直连可用（0.5~1s，瓶颈只剩匿名 60/h 配额→github_token）；raw.githubusercontent.com 极不稳；github.com release 资产直连残废（10KB/s/25s 超时）——**痛点在下载侧**。镜像横评（256KB×3）：gh-proxy.com 0.5~1s/250~537KB/s 首选（还能中转 raw），ghfast.top 次之，ghproxy.net 再次，ghproxy.link 假死；公共代理转发 API 全员不可用（共享出口 IP 配额烧光）。加速改造（NetworkConfig 加 download_mirror 前缀重写）已评估未实施，待拍板。
-
-**已验证**：80+ 测试全绿；沙箱 41 种子物化；8 新 SDK `list --remote` 版本发现全通（duckdb 58/etcd 86/caddy 51/traefik 90/starship 98/vault 87/consul 91/packer 63 个远程版本）；5 个标准 B 资产选择器 windows-x64 命中全对（模拟器复刻 score_asset 规则）；vault/consul/packer 模板 URL 206 探测通过；python 主源恢复出 122 个版本。未发版。
+**已验证**：80 测试全绿、clippy 无新警告、release 部署实测闪烁消失。URL 截取改为与 DIVIDER 等宽（`truncate_url` 按 `DIVIDER宽 - 缩进2 - "Source: " - "..."` 动态算，替换先前固定 30 字符方案）。未发版。
 
 ## 已知问题与注意事项
 
