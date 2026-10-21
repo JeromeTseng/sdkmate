@@ -10,13 +10,15 @@
 //   并从 assets 中挑选当前平台的压缩包直链（download_url 留空即可）
 // - 组合模式：GH 版本列表 + 官方 CDN 模板下载（helm/terraform——GH release 不含二进制资产）
 //
-// 文件组织：本模块只放类型、构造函数与聚合；种子按领域拆分在子模块（core/cli/devops/security）。
+// 文件组织：本模块只放类型、构造函数与聚合；种子按领域拆分在子模块（core/cli/devops/security/data）。
 //
-// 内置准入门槛：GH star ≥ 5k 或同等知名度（太冷门无内置价值）；资产命名与解压布局须
-// 满足标准 B 引擎（装完即用：主命令直接命中 PATH——zip 内 exe 带平台名的除名，如 codex/yq）。
+// 内置准入门槛：语言/数据库/中间件优先，star ≥ 15k 或 mega-famous 级常用度（太冷门无内置价值）；
+// 资产命名与解压布局须满足标准 B 引擎（装完即用：主命令直接命中 PATH——
+// zip 内 exe 带平台名的除名，如 codex/yq；裸二进制无压缩包的除名，如 jq/mkcert）。
 
 mod cli;
 mod core;
+mod data;
 mod devops;
 mod security;
 
@@ -122,6 +124,7 @@ pub static SDK_SEEDS: &[&SdkSeed] = &[
     &cli::BAT,
     &cli::EZA,
     &cli::DELTA,
+    &cli::STARSHIP,
     &devops::JUST,
     &devops::TASK,
     &devops::GOLANGCI_LINT,
@@ -135,6 +138,14 @@ pub static SDK_SEEDS: &[&SdkSeed] = &[
     &devops::GRPCURL,
     &devops::TEMPORAL,
     &security::AGE,
+    // ── 第三波（数据库/中间件）────────────────────────────────
+    &data::DUCKDB,
+    &data::ETCD,
+    &data::CADDY,
+    &data::TRAEFIK,
+    &data::VAULT,
+    &data::CONSUL,
+    &data::PACKER,
 ];
 
 /// 按名字查找内置种子

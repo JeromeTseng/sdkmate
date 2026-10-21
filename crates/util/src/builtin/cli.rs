@@ -10,3 +10,8 @@ pub const FD: SdkSeed = SdkSeed::gh("fd", "https://api.github.com/repos/sharkdp/
 pub const BAT: SdkSeed = SdkSeed::gh("bat", "https://api.github.com/repos/sharkdp/bat/releases", &["bat"]);
 pub const EZA: SdkSeed = SdkSeed::gh("eza", "https://api.github.com/repos/eza-community/eza/releases", &["eza"]);
 pub const DELTA: SdkSeed = SdkSeed::gh("delta", "https://api.github.com/repos/dandavison/delta/releases", &["delta"]);
+pub const STARSHIP: SdkSeed = SdkSeed::gh(
+    "starship",
+    "https://api.github.com/repos/starship/starship/releases",
+    &["starship"],
+);
