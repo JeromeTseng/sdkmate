@@ -97,27 +97,27 @@ bin_dir = "bin"
 
 `config` 子命令：`set`/`get`/`list`/`delete`/`edit`/`add-sdk`/`remove-sdk`，按类型校验（`ValueType`：Url/UrlTemplate/Bool/U32/Path/Token/String）+ 原子写入（写入-重命名）+ 快照回滚；内置 SDK（java/node/python/maven）不可 delete/remove-sdk，只能 set 修改。
 
-## 当前开发进度（2026-09-23）
+## 当前开发进度（2026-10-21）
 
 > **维护规则**：本节只保留最新一次改动，每次完成后**整体替换**（不是追加），文件体积不随历史增长。
 
-### 2026-09-23 —— builtin 注册表工程化重构：目录拆分 + gh() 快捷构造
+### 2026-10-21 —— builtin 第三波 8 种子（数据库/中间件）+ python 主源 URL 修复
 
-回应三个诉求：(1) 冷门度——上一批 20 个工具 star 实测全部 4.8k+（fzf 83k/lazygit 82k/rg 68k，最低 stern 4.8k），无冷门，不撤；**语言类（php/ruby 等源码仓库不发二进制）与中间件类（mysql 无官方 GH 资产/rocketmq 无 windows 二进制/redis 仅源码）不适用标准 B，不纳入**，star 门槛定 5k+ 知名度参考线（写入 builtin/mod.rs 注释）。(2) 构造简化。(3) 文件增长治理。
+回应诉求：种子准入提门槛——**语言→数据库→中间件优先，常用、mega-famous（star ≥ 15k）**，冷门 CLI 工具不再扩容（上一轮调研的 zoxide/hyperfine/helix 等 20+ 候选全部砍掉，仅保留 starship 57k）。
 
-**结构**：`builtin.rs`（625 行单文件）拆为 `builtin/` 目录：
+**新增 8 种子**（全部 GH API 实测资产名 + zip 布局解包验证）：
 
-- `mod.rs`（~148 行）：SdkSeed 类型 + `gh()` 快捷构造 + SDK_SEEDS 聚合表 + find/is_builtin/primary_executables_for
-- `core.rs`（~140 行）：旧 5 个专属路径（完整字面量，特例字段多）+ bun/pnpm/deno/uv/claude-code/cmake/gh
-- `cli.rs`（~26 行）：fzf/ripgrep/fd/bat/eza/delta
-- `devops.rs`（~115 行）：just/task/golangci-lint/watchexec/lazygit/lazydocker/k9s/stern/helmfile/dive/grpcurl/temporal + helm/terraform（组合模式完整字面量）
-- `security.rs`（~12 行）：age
+- 新文件 `builtin/data.rs`（数据库/中间件类）：**duckdb**（标准 B，`.prefix("duckdb_cli")`，libduckdb-* 被前缀门排除）、**etcd**（标准 B，zip 顶层目录提升后 etcd/etcdctl/etcdutl 三命令）、**caddy**（标准 B，buildable-artifact 源码包被未识别段排除）、**traefik**（标准 B，.src.tar.gz 被 "src" 段排除）+ **vault/consul/packer**（组合模式完整字面量，仿 terraform：GH release 无资产 → 落 releases.hashicorp.com 模板，ArchStyle::Go）
+- `builtin/cli.rs` 追加 **starship**（标准 B）；`builtin/mod.rs` 注册 `mod data` + SDK_SEEDS 第三波段；准入门槛注释更新为「语言/数据库/中间件优先，star ≥ 15k 或 mega-famous」
+- 内置总数 33 → **41**
 
-**`gh()` 快捷构造**：标准 B 直链场景 5 参数一行（name/version_url/primaries/bin_dir/asset_prefix），默认 None/None 即三参数——单种子从 18 行降到 1-5 行。特例（模板下载、非 Default 风格、extra_vars、专属路径）仍用完整字面量。注意 const 上下文不能用 `concat!(const, ...)`（只收字面量），URL 直接写全串（也更利于搜索）。
+**python 主源修复**：uv 把 download-metadata.json 从 `crates/uv-python/` 迁至 `crates/uv-python-managed/`，旧 URL 404（一直被 GH Releases 备源顶着未暴露）。core.rs 一行修复，schema 实测兼容（同一生成器）。
 
-**SDK_SEEDS 改 `&[&SdkSeed]`**：子模块各自 `pub const`，聚合表引用它们——sdkcore 的 `seed_to_config` 签名同步（`.iter().map(|s| seed_to_config(s))`）。
+**关键排除结论**（防重复调研）：语言类仅 zig 理论可接但需三处引擎小改（tar.xz 解压 + zig 命名风格，且 ziglang.org 国内下载实测超时）——暂缓；dart 无 GH release；mysql/postgres/redis/mongo 均无官方 GH 二进制；nacos 是 Java 包结构非单二进制；minio 裸二进制无压缩包；vault 等的裸二进制系（jq/mkcert/sops/cosign）需引擎新增「裸二进制下载」能力才能接——最大未来扩展点。
 
-**已验证**：80 测试全绿；沙箱 init 33 种子物化 + age 安装 + `age.exe --version` v1.3.2 实跑成功。未发版。
+**网络实测结论（无梯子真实国内网络）**：api.github.com 直连可用（0.5~1s，瓶颈只剩匿名 60/h 配额→github_token）；raw.githubusercontent.com 极不稳；github.com release 资产直连残废（10KB/s/25s 超时）——**痛点在下载侧**。镜像横评（256KB×3）：gh-proxy.com 0.5~1s/250~537KB/s 首选（还能中转 raw），ghfast.top 次之，ghproxy.net 再次，ghproxy.link 假死；公共代理转发 API 全员不可用（共享出口 IP 配额烧光）。加速改造（NetworkConfig 加 download_mirror 前缀重写）已评估未实施，待拍板。
+
+**已验证**：80+ 测试全绿；沙箱 41 种子物化；8 新 SDK `list --remote` 版本发现全通（duckdb 58/etcd 86/caddy 51/traefik 90/starship 98/vault 87/consul 91/packer 63 个远程版本）；5 个标准 B 资产选择器 windows-x64 命中全对（模拟器复刻 score_asset 规则）；vault/consul/packer 模板 URL 206 探测通过；python 主源恢复出 122 个版本。未发版。
 
 ## 已知问题与注意事项
 
