@@ -62,7 +62,8 @@ pub const PYTHON: SdkSeed = SdkSeed {
     name: "python",
     variant: Some(BuiltinSdk::Python),
     // 主源：uv 维护的元数据（raw.githubusercontent 无速率限制）；备源：GH Releases API
-    version_url: "https://raw.githubusercontent.com/astral-sh/uv/main/crates/uv-python/download-metadata.json",
+    // 2026-10 起文件从 crates/uv-python/ 迁至 crates/uv-python-managed/
+    version_url: "https://raw.githubusercontent.com/astral-sh/uv/main/crates/uv-python-managed/download-metadata.json",
     version_fallback_url: Some("https://api.github.com/repos/astral-sh/python-build-standalone/releases"),
     // {version}/{release_tag}/{platform} = 动态发现填充
     download_url: Some(
