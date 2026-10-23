@@ -43,25 +43,26 @@ fn is_windows_china_timezone() -> bool {
 
 /// Unix：$TZ → /etc/timezone → /etc/localtime 链接目标，任一命中大陆时区别名
 #[cfg(unix)]
-fn is_unix_china_timezone() {
+fn is_unix_china_timezone() -> bool {
     // $TZ 环境变量（可能带路径前缀，如 ":Asia/Shanghai"）
     if let Ok(tz) = std::env::var("TZ") {
         if matches_china_tz(&tz) {
-            return;
+            return true;
         }
     }
     // /etc/timezone（Debian/Ubuntu 系）
     if let Ok(content) = std::fs::read_to_string("/etc/timezone") {
         if matches_china_tz(content.trim()) {
-            return;
+            return true;
         }
     }
     // /etc/localtime 符号链接目标（RHEL/Arch 系，形如 ../usr/share/zoneinfo/Asia/Shanghai）
     if let Ok(target) = std::fs::read_link("/etc/localtime") {
         if matches_china_tz(&target.to_string_lossy()) {
-            return;
+            return true;
         }
     }
+    false
 }
 
 /// 字符串是否包含任一大陆时区别名（大小写不敏感；TZ 值可能带 ":"
