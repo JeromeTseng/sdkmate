@@ -11,6 +11,7 @@ use util::consts::{
     SDKM_CACHE_DIR, SDKM_STORE_DIR, SDKM_TMP_DIR,
 };
 use util::path::{get_installed_sdks_dir, get_sdkm_config_path, get_sdkm_home, is_sdkm_dedicated_dir};
+use util::region::is_china_mainland_timezone;
 use util::terminal::{prompt_confirm, suggest_sdkm_path};
 use util::{banner, detail, divider, info, step, success, tree, try_bug, warning};
 
@@ -130,7 +131,14 @@ impl SdkManager {
 
     /// 创建默认配置文件
     fn init_sdkm_config() -> Result<()> {
-        let config = SdkmConfig::default();
+        let mut config = SdkmConfig::default();
+        // 中国大陆时区 → 默认启用 GitHub 下载镜像（GH 资产国内直连基本不可用，
+        // 镜像可随时 config set 清空关闭）；检测失败返回 false 不影响主流程
+        if is_china_mainland_timezone() {
+            config.network.github_download_mirror = Some("https://gh-proxy.com/".to_string());
+            success!("China mainland timezone detected — GitHub download mirror enabled by default (gh-proxy.com)");
+            detail!("To disable: sdkm config set network.github_download_mirror \"\"");
+        }
         config.write_to_disk()?;
         Ok(())
     }
