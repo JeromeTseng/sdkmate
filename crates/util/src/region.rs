@@ -16,7 +16,7 @@ const WINDOWS_CHINA_TZ: &str = "China Standard Time";
 
 /// 当前系统时区是否为中国大陆时区
 ///
-/// Windows：读注册表 HKCU\Control Panel\Time Zones 的 TimeZoneKeyName；
+/// Windows：读注册表 HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation 的 TimeZoneKeyName；
 /// Unix：依次读 $TZ 环境变量 → /etc/timezone → /etc/localtime 符号链接目标。
 /// 全部读取失败（容器/嵌入式等）返回 false。
 pub fn is_china_mainland_timezone() -> bool {
