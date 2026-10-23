@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.2 - 2026-10-23
+
+
+### 🐛 Bug Fixes
+
+- add github_download_mirror to config list output — [`3860b14`](https://github.com/borenchan/sdkmate/commit/3860b14)
+
+### 🧰 Chore
+
+- release v0.5.2 — [`3c78da9`](https://github.com/borenchan/sdkmate/commit/3c78da9)
+
+### 🙌 Contributors
+
+- <a href="https://github.com/borenchan"><img src="https://avatars.githubusercontent.com/u/96477641?v=4" width="32" height="32" alt="borenchan" /> borenchan</a>
+
+**Full Changelog**: https://github.com/borenchan/sdkmate/compare/v0.5.1...v0.5.2
+
+
+
 ## v0.5.1 - 2026-10-23
 
 
