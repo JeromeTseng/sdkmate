@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.5.1 - 2026-10-23
+
+
+### ✨ Features
+
+- auto-enable github_download_mirror on China mainland timezone — [`2e748d2`](https://github.com/borenchan/sdkmate/commit/2e748d2)
+- add github_download_mirror for GitHub download acceleration — [`b07c089`](https://github.com/borenchan/sdkmate/commit/b07c089)
+- add f-key substring search to TUI selectors over full remote version list — [`f7151ac`](https://github.com/borenchan/sdkmate/commit/f7151ac)
+- add duckdb/etcd/caddy/traefik/starship/vault/consul/packer builtin SDKs — [`e23017f`](https://github.com/borenchan/sdkmate/commit/e23017f)
+
+### 🐛 Bug Fixes
+
+- return bool from unix timezone check for cross-platform build — [`5595d32`](https://github.com/borenchan/sdkmate/commit/5595d32)
+- eliminate TUI flicker with incremental redraw and align source URL to divider width — [`0d461ae`](https://github.com/borenchan/sdkmate/commit/0d461ae)
+- update python version metadata URL after uv repo migration — [`10b3060`](https://github.com/borenchan/sdkmate/commit/10b3060)
+
+### 📝 Documentation
+
+- update readme chinese desc — [`ea1b9e2`](https://github.com/borenchan/sdkmate/commit/ea1b9e2)
+- fix stale registry path in region.rs comment — [`2aab879`](https://github.com/borenchan/sdkmate/commit/2aab879)
+- document github_download_mirror in configuration.md — [`62af5a7`](https://github.com/borenchan/sdkmate/commit/62af5a7)
+- update CLAUDE.md progress for TUI incremental redraw and f-key search — [`4440235`](https://github.com/borenchan/sdkmate/commit/4440235)
+- update CLAUDE.md progress for builtin tier-3 SDKs — [`959bf53`](https://github.com/borenchan/sdkmate/commit/959bf53)
+- revamp readme with demo gif, badges and toc; swap en/zh readme files — [`017726a`](https://github.com/borenchan/sdkmate/commit/017726a)
+- update readme — [`3bf5116`](https://github.com/borenchan/sdkmate/commit/3bf5116)
+
+### 🧰 Chore
+
+- release v0.5.1 — [`c73aa7b`](https://github.com/borenchan/sdkmate/commit/c73aa7b)
+
+### 🙌 Contributors
+
+- <a href="https://github.com/borenchan"><img src="https://avatars.githubusercontent.com/u/96477641?v=4" width="32" height="32" alt="borenchan" /> borenchan</a>
+
+**Full Changelog**: https://github.com/borenchan/sdkmate/compare/v0.5.0...v0.5.1
+
+
+
 ## v0.5.0 - 2026-09-23
 
 
