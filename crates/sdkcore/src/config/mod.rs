@@ -515,6 +515,10 @@ impl SdkmConfig {
             "network.github_token".to_string(),
             mask_token(&self.network.github_token.clone().unwrap_or_default()),
         ));
+        entries.push((
+            "network.github_download_mirror".to_string(),
+            self.network.github_download_mirror.clone().unwrap_or("(none)".to_string()),
+        ));
 
         // SDK 子表（按 name 字母序排列）
         let mut sorted_sdks: Vec<&SdkConfig> = self.sdks.iter().collect();
