@@ -62,13 +62,13 @@ impl SdkManager {
         let client = build_reqwest_client(&self.config.network)?;
 
         // ── 查询 GitHub 最新 release ──
+        // token 只注入 GH API 请求（不再走 client 全局 header，避免镜像下载把 token 发给第三方）
         info!("checking latest release from GitHub...");
-        let resp = client
-            .get(RELEASES_API)
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await
-            .context("Failed to query GitHub releases API")?;
+        let mut req = client.get(RELEASES_API).header("Accept", "application/vnd.github+json");
+        if let Some(token) = &self.config.network.github_token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let resp = req.send().await.context("Failed to query GitHub releases API")?;
         let status = resp.status();
         if !status.is_success() {
             bail!(
@@ -102,6 +102,8 @@ impl SdkManager {
             .find(|a| a.name == asset_name)
             .with_context(|| format!("asset `{}` not found in latest release", asset_name))?;
         let download_url = asset.browser_download_url.clone();
+        // GitHub 下载镜像重写（白名单域名拼前缀；关闭态原样返回）
+        let download_url = self.config.network.mirror_github_url(&download_url);
 
         // ── 权限预检：在 exe 父目录试写（碰网络前挡权限失败）──
         let exe = env::current_exe().context("cannot locate sdkm executable")?;

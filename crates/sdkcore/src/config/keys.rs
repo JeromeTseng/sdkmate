@@ -15,6 +15,7 @@ pub enum ConfigKey {
     NetworkConnectTimeout,
     NetworkCacheTtlSecs,
     NetworkGithubToken,
+    NetworkGithubDownloadMirror,
     // SDK 子表键（需要 SDK name 定位具体条目）
     Sdk { name: String, field: SdkField },
     // SDK extra_vars 单键操作
@@ -33,6 +34,7 @@ impl ConfigKey {
             ConfigKey::NetworkConnectTimeout => "network.connect_timeout".to_string(),
             ConfigKey::NetworkCacheTtlSecs => "network.cache_ttl_secs".to_string(),
             ConfigKey::NetworkGithubToken => "network.github_token".to_string(),
+            ConfigKey::NetworkGithubDownloadMirror => "network.github_download_mirror".to_string(),
             ConfigKey::Sdk { name, field } => {
                 let field_name = match field {
                     SdkField::VersionUrl => "version_url",
@@ -94,6 +96,7 @@ pub fn parse_config_key(key: &str) -> Result<ConfigKey> {
                 "connect_timeout" => Ok(ConfigKey::NetworkConnectTimeout),
                 "cache_ttl_secs" => Ok(ConfigKey::NetworkCacheTtlSecs),
                 "github_token" => Ok(ConfigKey::NetworkGithubToken),
+                "github_download_mirror" => Ok(ConfigKey::NetworkGithubDownloadMirror),
                 _ => bail_invalid_key(key),
             },
             "sdk" => bail!(
@@ -178,7 +181,7 @@ pub fn parse_config_key(key: &str) -> Result<ConfigKey> {
 /// 生成无效键名错误，附带所有合法键名清单
 fn bail_invalid_key(key: &str) -> Result<ConfigKey> {
     bail!(
-        "Invalid config key '{}'.\nValid keys:\n  {}\n  network.proxy, network.ssl_verify, network.connect_timeout, network.cache_ttl_secs, network.github_token\n  sdk.<name>.version_url, sdk.<name>.download_url, sdk.<name>.current_version, ...\n  sdk.<name>.extra_vars.<KEY>, sdk.<name>.extra_paths.<N>",
+        "Invalid config key '{}'.\nValid keys:\n  {}\n  network.proxy, network.ssl_verify, network.connect_timeout, network.cache_ttl_secs, network.github_token, network.github_download_mirror\n  sdk.<name>.version_url, sdk.<name>.download_url, sdk.<name>.current_version, ...\n  sdk.<name>.extra_vars.<KEY>, sdk.<name>.extra_paths.<N>",
         key,
         "symlink_dir,"
     )
@@ -193,6 +196,7 @@ pub fn known_keys() -> Vec<&'static str> {
         "network.connect_timeout",
         "network.cache_ttl_secs",
         "network.github_token",
+        "network.github_download_mirror",
         "sdk.<name>.version_url",
         "sdk.<name>.version_fallback_url",
         "sdk.<name>.download_url",

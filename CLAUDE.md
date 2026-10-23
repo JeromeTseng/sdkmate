@@ -97,21 +97,23 @@ bin_dir = "bin"
 
 `config` 子命令：`set`/`get`/`list`/`delete`/`edit`/`add-sdk`/`remove-sdk`，按类型校验（`ValueType`：Url/UrlTemplate/Bool/U32/Path/Token/String）+ 原子写入（写入-重命名）+ 快照回滚；内置 SDK（java/node/python/maven）不可 delete/remove-sdk，只能 set 修改。
 
-## 当前开发进度（2026-10-21）
+## 当前开发进度（2026-10-23）
 
 > **维护规则**：本节只保留最新一次改动，每次完成后**整体替换**（不是追加），文件体积不随历史增长。
 
-### 2026-10-21 —— TUI 增量重绘修复闪烁 + 两层选择器 f 键搜索（全量版本过滤）
+### 2026-10-23 —— GitHub 下载镜像（gh-proxy）+ init 大陆时区自动启用 + 主备源切换日志
 
-**闪烁修复**（`tui.rs` 两个 selector 循环同款）：根因是每轮循环 `Clear(ClearType::All)` 全屏重绘 + size 回填期 120ms 短轮询驱动（SDK 多时连续闪数秒，tip 也跟着 120ms 一换）。改为**增量重绘**：`need_redraw` 脏标记，仅按键导航/size 新回填（`done > last_done` 计数）/3s 超时（tip 轮换）才重画；去掉每帧 `Clear(All)`，帧尾 `Clear(FromCursorDown)` 清尾部残留。
+**镜像机制**：`network.github_download_mirror` 配置（如 `https://gh-proxy.com/`，空 = 关闭默认）。核心是 `NetworkConfig::mirror_github_url()`（config/mod.rs）——**纯 URL 重写层**：host 白名单（github.com / raw / objects / codeload / gist.githubusercontent.com，`url::Url::parse` 后 `host_str()` 精确比对防前缀伪装）拼镜像前缀，尾斜杠归一化，`api.github.com` 明确排除（实测直连 0.6s 稳定+token 已解配额，公共镜像 API 转发 403/共享配额不可靠）。挂载点 4 处各 1~2 行：版本发现主备源（cache.rs）、install 主下载 URL + 备源、self_update 资产——**主备切换/重试/断点续传一行未动**，镜像失败自然走既有重试→落备源。单测 4 个（关闭态/白名单/排除/畸形 URL）。
 
-**f 键搜索**（两层 TUI 都有）：`f` 进搜索态 → 底部 keybinding 行变 `Search: xxx▊` 输入行（大小写不敏感子串实时过滤）→ Enter 应用保留过滤态 / Esc 清空恢复全列表。**Esc 语义分流**：过滤生效时先清过滤、无过滤才退 TUI；搜索态里 `q`/`i`/`s`/`d` 都是普通字符不触发动作；Ctrl+C 任何时刻退出。过滤后序号保留全量编号、分组线仅无过滤时画、无结果时仅 f/Esc/q 可按。
+**init 大陆自动启用**：`util/src/region.rs::is_china_mainland_timezone()`——Windows 读注册表 `HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation` 的 `TimeZoneKeyName` 精确匹配 `"China Standard Time"`（**注意：不是 HKCU\Control Panel\Time Zones**，那个键不存在当前时区记录，tzutil /g 同源 HKLM）；Unix 三级回退 `$TZ` → `/etc/timezone` → `/etc/localtime` 链接目标，匹配 IANA 名 `Shanghai/Chongqing/Harbin/Urumqi`（按名字不按 UTC+8 数值，新加坡/吉隆坡不误开）。签名 `-> bool` 全兜底：任何读取失败返回 false 维持现状，无 panic 无日志噪音。仅首次 init / force 重置写默认 config 时生效，已有 config 用户不受影响。命中输出提示 + 关闭命令。
 
-**版本搜索是全量检索**：`fetch_remote_versions_async` 本来就拉全量（python 122 个），原来 `items[..limit]` 在进 TUI 前截断。现改 `impls/list.rs`：TTY 路径 `fetch_remote_version_list(&sdk, u32::MAX)` 全量传 TUI，**`--limit` 退化为仅非 TTY 文本输出参数**；TUI 头部 "showing N" 改为过滤时显示 `N/M matches (Esc to clear)`。
+**token 安全修复**：`build_reqwest_client` 移除全局 default_headers Authorization（镜像开启时下载请求会把 token 发给第三方代理）。改为按 URL 精确注入：cache.rs 新增 `with_github_token_if_api()`（版本发现链，含 install/list 全部调用），self_update 的 RELEASES_API 请求点补 header。token 从此只发往 api.github.com。
 
-**实现要点**：`filtered: Option<Vec<usize>>` 行索引映射（None=全量顺序），循环头每轮重建 `indices`/`view_total`/`view_visible` 并夹取 selected/scroll_offset；事件处理经 `indices[selected]` 映射回全量下标；`view_total=0` 防下溢（`selected + 1 < view_total` 替代 `selected < total - 1`）。`apply_sdk_filter`（按 sdk 名）/`apply_version_filter`（按版本号）两个辅助函数。clippy `needless_range_loop` 用 `indices[range].iter().enumerate()` 过。
+**主备源切换日志**（cache.rs `fetch_version_data`）：此前主源 404 静默跳备源（python 主源旧路径 404 用户完全无感知，备源又 504 就直接报错）。现主源失败打出原因 `primary source failed (primary source returned HTTP 404...), trying secondary...`，备源也挂打出 `secondary source also failed (...), falling back to stale cache`；无备源时错误带主源原因。错误串剥内层 `[sdk]` 前缀防重复。
 
-**已验证**：80 测试全绿、clippy 无新警告、release 部署实测闪烁消失。URL 截取改为与 DIVIDER 等宽（`truncate_url` 按 `DIVIDER宽 - 缩进2 - "Source: " - "..."` 动态算，替换先前固定 30 字符方案）。未发版。
+**实测数据**（2026-10-21~23 真实国内网络）：GH 资产直连大文件必超时（duckdb 25MB 000），镜像稳定 1.8~2.9MB/s；**公共镜像速度波动大**（gh-proxy.com 隔日 1.8MB/s→105KB/s，ghfast.top 同期 2.1MB/s），镜像本身可 `config set` 随时换；python-build-standalone 的 releases API per_page=100 GitHub 服务端 504（仓库过大，curl 直连复现，与客户端无关），主源恢复后不触发。
+
+**已验证**：84 测试全绿（含 4 mirror 单测）、clippy 无新警告、release 沙箱 init 实测大陆检测+写入+提示、python raw 主源走镜像拉回 122 版本。文档同步 docs/configuration.md。未发版。
 
 ## 已知问题与注意事项
 

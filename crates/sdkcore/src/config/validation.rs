@@ -96,6 +96,7 @@ pub fn field_type(key: &ConfigKey) -> ValueType {
         ConfigKey::NetworkConnectTimeout => ValueType::U32 { min: 1, max: 600 },
         ConfigKey::NetworkCacheTtlSecs => ValueType::U32 { min: 0, max: 86400 },
         ConfigKey::NetworkGithubToken => ValueType::Token,
+        ConfigKey::NetworkGithubDownloadMirror => ValueType::Url,
         ConfigKey::Sdk {
             field: SdkField::VersionUrl,
             ..
@@ -170,6 +171,11 @@ pub fn key_meta(key: &ConfigKey, is_builtin: bool) -> KeyMeta {
         ConfigKey::NetworkGithubToken => KeyMeta {
             deletable: true,
             value_type: ValueType::Token,
+            default_desc: "(none)".to_string(),
+        },
+        ConfigKey::NetworkGithubDownloadMirror => KeyMeta {
+            deletable: true,
+            value_type: ValueType::Url,
             default_desc: "(none)".to_string(),
         },
         ConfigKey::Sdk {

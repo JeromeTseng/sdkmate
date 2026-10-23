@@ -102,6 +102,7 @@ impl SdkManager {
                     version_input,
                     headers,
                     self.config.network.cache_ttl_secs as u64,
+                    &self.config.network,
                 )
                 .await?
             }
@@ -155,6 +156,8 @@ impl SdkManager {
             })?;
             build_download_url(sdk, sdk_conf, template, &resolved)?
         };
+        // GitHub 下载镜像重写（白名单域名拼前缀；关闭态原样返回）
+        let download_url = self.config.network.mirror_github_url(&download_url);
         detail!("Download URL (primary): {}", download_url);
 
         let download_fallback_url = sdk_conf
@@ -173,7 +176,9 @@ impl SdkManager {
                 // 备源 URL 模板一律渲染（含直链场景：{version} 取解析后的版本号，
                 // 支持国内 gh-proxy 类镜像模板作为 GH 直链失败的备源）
                 build_download_url(sdk, sdk_conf, &fallback_template, &resolved).unwrap_or(fallback_template)
-            });
+            })
+            // 备源同样过镜像层（白名单内重写，与主源规则一致）
+            .map(|fallback_url| self.config.network.mirror_github_url(&fallback_url));
 
         // ── Phase 4: 创建临时目录 ─────────────────────────────────
         let sdkm_home = get_sdkm_home()?;

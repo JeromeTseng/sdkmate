@@ -1,5 +1,6 @@
 // 版本数据缓存 + 网络获取(无 SDK 语义,纯传输层)
 
+use crate::config::NetworkConfig;
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
 use std::collections::HashMap;
@@ -71,31 +72,68 @@ pub async fn fetch_version_data(
     sdk_label: &str,
     headers: Option<HashMap<String, String>>,
     cache_ttl_secs: u64,
+    network: &NetworkConfig,
 ) -> Result<String> {
     // 缓存优先:新鲜则立即返回,不发起网络请求
     if let Some(cached) = load_from_cache_if_fresh(cache_key, cache_ttl_secs) {
         return Ok(cached);
     }
 
+    // GitHub 下载镜像重写（纯 URL 层：白名单域名拼前缀，api.github.com 排除）
+    let primary_url = network.mirror_github_url(&source.primary_url);
+    let secondary_url = source
+        .secondary_url
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| network.mirror_github_url(s));
+
+    // token 只注入 GH API 请求（client 不再全局带 Authorization，防镜像下载泄露给第三方）；
+    // api.github.com 不在镜像白名单内，重写前后 URL 的"是否 GH API"判定等价
+    let secondary_headers = secondary_url
+        .as_deref()
+        .map(|rewritten| with_github_token_if_api(headers.clone(), rewritten, network))
+        .flatten();
+    let primary_headers = with_github_token_if_api(headers, &primary_url, network);
+
     // 缓存过期或缺失 → 走 API
-    let primary_result = try_url_with_retry(client, &source.primary_url, headers.clone(), sdk_label, "primary").await;
+    let primary_result = try_url_with_retry(client, &primary_url, primary_headers, sdk_label, "primary").await;
 
     if let Ok(body) = primary_result {
         let _ = save_to_cache(cache_key, &body);
         return Ok(body);
     }
 
-    // 主源失败 → 试备源
-    if let Some(secondary_url) = &source.secondary_url {
-        if !secondary_url.is_empty() {
-            let secondary_result =
-                try_url_with_retry(client, secondary_url, headers.clone(), sdk_label, "secondary").await;
+    // 主源失败原因打出（404 等确定性失败此前静默跳备源，用户看不到主源已失效）。
+    // try_url_with_retry 的错误串自带 "[sdk] primary source ..." 前缀，这里剥掉避免重复
+    let primary_err = primary_result.unwrap_err();
+    let strip_prefix = |e: anyhow::Error, label: &str| -> String {
+        e.to_string()
+            .strip_prefix(&format!("[{}] ", label))
+            .unwrap_or(&e.to_string())
+            .to_string()
+    };
+    let primary_err_str = strip_prefix(primary_err, sdk_label);
+    if let Some(secondary_url) = &secondary_url {
+        warning!(
+            "[{}] primary source failed ({}), trying secondary source...",
+            sdk_label,
+            truncate(&primary_err_str, 160)
+        );
+        let secondary_result =
+            try_url_with_retry(client, secondary_url, secondary_headers, sdk_label, "secondary").await;
 
-            if let Ok(body) = secondary_result {
-                let _ = save_to_cache(cache_key, &body);
-                return Ok(body);
-            }
+        if let Ok(body) = secondary_result {
+            let _ = save_to_cache(cache_key, &body);
+            return Ok(body);
         }
+        warning!(
+            "[{}] secondary source also failed ({}), falling back to stale cache if any",
+            sdk_label,
+            truncate(&strip_prefix(secondary_result.unwrap_err(), sdk_label), 160)
+        );
+    } else {
+        // 无备源配置时把主源错误带上，避免只剩笼统的 no cache 提示
+        return Err(anyhow::anyhow!("[{}] {}", sdk_label, primary_err_str));
     }
 
     // 主备均失败 → 返回过期缓存作为降级兜底
@@ -111,6 +149,27 @@ pub async fn fetch_version_data(
         "[{}] all version sources failed with no local cache available. Check your network or configure a mirror URL",
         sdk_label
     );
+}
+
+/// GH API 请求附加 Authorization header（未配置 token 或非 GH API URL 则原样返回）
+///
+/// token 不再走 client 全局 header（镜像开启时下载请求会把 token 发给第三方代理），
+/// 由本函数按 URL 判定精确注入。
+fn with_github_token_if_api(
+    mut headers: Option<HashMap<String, String>>,
+    url: &str,
+    network: &NetworkConfig,
+) -> Option<HashMap<String, String>> {
+    let Some(token) = network.github_token.as_deref().filter(|t| !t.is_empty()) else {
+        return headers;
+    };
+    if !url.contains("api.github.com/") {
+        return headers;
+    }
+    headers
+        .get_or_insert_with(HashMap::new)
+        .insert("Authorization".to_string(), format!("Bearer {}", token));
+    headers
 }
 
 /// 对单个 URL 进行重试(5xx/网络错误重试,429/403 不重试直接返回错误)

@@ -3,6 +3,7 @@
 // 注意:下载 URL 构建(`build_download_url`)已移至 `install/download_url.rs`,
 // 本模块只负责"版本发现"(把 HTTP 响应解析为 VersionEntry 列表)+ 解析编排。
 
+use crate::config::NetworkConfig;
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
 use serde::Deserialize;
@@ -112,8 +113,9 @@ pub async fn resolve_sdk_version(
     version_input: &str,
     headers: Option<HashMap<String, String>>,
     cache_ttl_secs: u64,
+    network: &NetworkConfig,
 ) -> Result<ResolvedVersion> {
-    let body = fetch_version_data(client, source, cache_key, sdk_label, headers, cache_ttl_secs).await?;
+    let body = fetch_version_data(client, source, cache_key, sdk_label, headers, cache_ttl_secs, network).await?;
     let entries = discovery.parse_version_data(&body)?;
     fuzzy_match_version(&entries, version_input)
 }

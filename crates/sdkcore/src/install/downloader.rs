@@ -7,9 +7,9 @@ use std::time::Duration;
 use util::{detail, warning};
 
 /// Build reqwest Client from NetworkConfig.
-/// - User-Agent is required by GitHub API
-/// - github_token (if configured) adds Authorization header,
-///   increasing GitHub API rate limit from 60/hr to 5000/hr
+/// User-Agent is required by GitHub API.
+/// 注意：github_token 不在此全局注入（避免镜像开启时把 token 发给第三方代理），
+/// 由各 GH API 请求点自行添加 Authorization header（github_api_headers 或请求级 header）。
 pub fn build_reqwest_client(network: &NetworkConfig) -> Result<Client> {
     let mut builder = Client::builder()
         .connect_timeout(Duration::from_secs(network.connect_timeout as u64))
@@ -17,13 +17,6 @@ pub fn build_reqwest_client(network: &NetworkConfig) -> Result<Client> {
         .gzip(true)
         .redirect(reqwest::redirect::Policy::limited(10))
         .user_agent("sdkm/0.2");
-
-    // Add GitHub token as default Authorization header if configured
-    if let Some(token) = &network.github_token {
-        let auth_value = format!("Bearer {}", token);
-        let header_value = reqwest::header::HeaderValue::from_str(&auth_value).context("Invalid github_token value")?;
-        builder = builder.default_headers([(reqwest::header::AUTHORIZATION, header_value)].into_iter().collect());
-    }
 
     if let Some(proxy_url) = &network.proxy {
         let proxy = reqwest::Proxy::all(proxy_url).context(format!("Invalid proxy URL: {}", proxy_url))?;

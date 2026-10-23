@@ -65,6 +65,43 @@ pub struct NetworkConfig {
     /// Create at: https://github.com/settings/tokens (no special permissions needed)
     #[serde(default)]
     pub github_token: Option<String>,
+
+    /// GitHub 下载镜像前缀（可选，如 "https://gh-proxy.com/"）。
+    /// 域名在白名单内（github.com 等，不含 api.github.com）的下载/raw 请求拼此前缀加速；
+    /// 空 = 关闭。纯 URL 重写层，不影响主备切换与重试逻辑。
+    #[serde(default)]
+    pub github_download_mirror: Option<String>,
+}
+
+impl NetworkConfig {
+    /// GitHub 下载镜像重写：URL 域名在白名单内则拼镜像前缀，否则原样返回。
+    /// 空镜像配置 = 关闭（原样返回）。api.github.com 明确排除（直连+token 已可用，
+    /// 公共代理出口 IP 匿名配额不可靠）。非白名单/关闭态返回 to_string 的原 URL。
+    pub fn mirror_github_url(&self, url: &str) -> String {
+        const WHITELIST: &[&str] = &[
+            "github.com",
+            "raw.githubusercontent.com",
+            "objects.githubusercontent.com",
+            "codeload.github.com",
+            "gist.githubusercontent.com",
+        ];
+        let Some(mirror) = self.github_download_mirror.as_deref() else {
+            return url.to_string();
+        };
+        if mirror.is_empty() {
+            return url.to_string();
+        }
+        let Ok(parsed) = url::Url::parse(url) else {
+            return url.to_string();
+        };
+        let in_whitelist = parsed.host_str().is_some_and(|h| WHITELIST.contains(&h));
+        if !in_whitelist {
+            return url.to_string();
+        }
+        // 尾斜杠归一化：镜像填 "https://gh-proxy.com" 等价带 "/"
+        let sep = if mirror.ends_with('/') { "" } else { "/" };
+        format!("{}{}{}", mirror, sep, url)
+    }
 }
 
 fn default_cache_ttl_secs() -> u32 {
@@ -79,6 +116,7 @@ impl Default for NetworkConfig {
             connect_timeout: 30,
             cache_ttl_secs: default_cache_ttl_secs(),
             github_token: None,
+            github_download_mirror: None,
         }
     }
 }
@@ -283,6 +321,9 @@ impl SdkmConfig {
             ConfigKey::NetworkConnectTimeout => Ok(self.network.connect_timeout.to_string()),
             ConfigKey::NetworkCacheTtlSecs => Ok(self.network.cache_ttl_secs.to_string()),
             ConfigKey::NetworkGithubToken => Ok(self.network.github_token.clone().unwrap_or_default()),
+            ConfigKey::NetworkGithubDownloadMirror => {
+                Ok(self.network.github_download_mirror.clone().unwrap_or_default())
+            }
             ConfigKey::Sdk { name, field } => {
                 let sdk = self.find_sdk_by_name(name)?;
                 match field {
@@ -339,6 +380,10 @@ impl SdkmConfig {
             ConfigKey::NetworkConnectTimeout => self.network.connect_timeout = value.parse().unwrap_or(30),
             ConfigKey::NetworkCacheTtlSecs => self.network.cache_ttl_secs = value.parse().unwrap_or(3600),
             ConfigKey::NetworkGithubToken => self.network.github_token = Some(value),
+            // 空串 = 关闭镜像（存 None），与 delete 语义一致
+            ConfigKey::NetworkGithubDownloadMirror => {
+                self.network.github_download_mirror = if value.is_empty() { None } else { Some(value) }
+            }
             ConfigKey::Sdk { name, field } => {
                 if let Some(sdk) = self.find_sdk_mut_by_name(name) {
                     match field {
@@ -406,6 +451,7 @@ impl SdkmConfig {
             ConfigKey::SymlinkDir => self.symlink_dir = None,
             ConfigKey::NetworkProxy => self.network.proxy = None,
             ConfigKey::NetworkGithubToken => self.network.github_token = None,
+            ConfigKey::NetworkGithubDownloadMirror => self.network.github_download_mirror = None,
             ConfigKey::Sdk { name, field } => {
                 if let Some(sdk) = self.find_sdk_mut_by_name(name) {
                     match field {
@@ -639,5 +685,69 @@ fn seed_to_config(seed: &SdkSeed) -> SdkConfig {
         extra_paths,
         os_style,
         arch_style,
+    }
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+
+    /// 关闭态（None/空串）原样返回
+    #[test]
+    fn test_mirror_disabled() {
+        let mut n = NetworkConfig::default();
+        let url = "https://github.com/a/b/releases/download/v1/x.zip";
+        assert_eq!(n.mirror_github_url(url), url);
+        n.github_download_mirror = Some(String::new());
+        assert_eq!(n.mirror_github_url(url), url);
+    }
+
+    /// 白名单域名拼镜像前缀；尾斜杠缺失自动补
+    #[test]
+    fn test_mirror_whitelist() {
+        let mut n = NetworkConfig::default();
+        n.github_download_mirror = Some("https://gh-proxy.com".to_string());
+        assert_eq!(
+            n.mirror_github_url("https://github.com/a/b/releases/download/v1/x.zip"),
+            "https://gh-proxy.com/https://github.com/a/b/releases/download/v1/x.zip"
+        );
+        assert_eq!(
+            n.mirror_github_url("https://raw.githubusercontent.com/a/b/main/c.json"),
+            "https://gh-proxy.com/https://raw.githubusercontent.com/a/b/main/c.json"
+        );
+        // 带尾斜杠的镜像不重复
+        n.github_download_mirror = Some("https://gh-proxy.com/".to_string());
+        assert_eq!(
+            n.mirror_github_url("https://codeload.github.com/a/b/tar.gz/refs/tags/v1"),
+            "https://gh-proxy.com/https://codeload.github.com/a/b/tar.gz/refs/tags/v1"
+        );
+    }
+
+    /// api.github.com 与非白名单域名不重写
+    #[test]
+    fn test_mirror_excluded() {
+        let mut n = NetworkConfig::default();
+        n.github_download_mirror = Some("https://gh-proxy.com/".to_string());
+        assert_eq!(
+            n.mirror_github_url("https://api.github.com/repos/a/b/releases"),
+            "https://api.github.com/repos/a/b/releases"
+        );
+        assert_eq!(
+            n.mirror_github_url("https://nodejs.org/dist/v20/node.zip"),
+            "https://nodejs.org/dist/v20/node.zip"
+        );
+        // evil-github.com 这类前缀伪装不命中（host 精确比对）
+        assert_eq!(
+            n.mirror_github_url("https://evil-github.com/a.zip"),
+            "https://evil-github.com/a.zip"
+        );
+    }
+
+    /// 畸形 URL 不 panic 原样返回
+    #[test]
+    fn test_mirror_malformed() {
+        let mut n = NetworkConfig::default();
+        n.github_download_mirror = Some("https://gh-proxy.com/".to_string());
+        assert_eq!(n.mirror_github_url("not a url"), "not a url");
     }
 }
