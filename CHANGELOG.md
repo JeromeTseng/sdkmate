@@ -1,5 +1,133 @@
 # Changelog
 
+## v0.5.6 - 2026-11-13
+
+
+### ✨ Features
+
+- annotate effective version source in sdkm current (#22) — [`b6c5519`](https://github.com/borenchan/sdkmate/commit/b6c5519)
+- auto-enable github_download_mirror on China mainland timezone — [`2e748d2`](https://github.com/borenchan/sdkmate/commit/2e748d2)
+- add github_download_mirror for GitHub download acceleration — [`b07c089`](https://github.com/borenchan/sdkmate/commit/b07c089)
+- add f-key substring search to TUI selectors over full remote version list — [`f7151ac`](https://github.com/borenchan/sdkmate/commit/f7151ac)
+- add duckdb/etcd/caddy/traefik/starship/vault/consul/packer builtin SDKs — [`e23017f`](https://github.com/borenchan/sdkmate/commit/e23017f)
+- expand builtin SDKs to 33 with categorized dev tools — [`5b397e2`](https://github.com/borenchan/sdkmate/commit/5b397e2)
+- add GitHub Releases engine and expand builtin SDKs to 14 — [`9109099`](https://github.com/borenchan/sdkmate/commit/9109099)
+- add sdkm doctor diagnostic command and issue templates (v0.4.6) — [`94f3b02`](https://github.com/borenchan/sdkmate/commit/94f3b02)
+- two-layer ls TUI with registered SDK browser and TTY-aware fallbacks — [`262e1df`](https://github.com/borenchan/sdkmate/commit/262e1df)
+- global layer dynamically reflects active sdks so enter applies switch instantly — [`be8934e`](https://github.com/borenchan/sdkmate/commit/be8934e)
+- add fish support with pluggable shell backend — [`03bcc8d`](https://github.com/borenchan/sdkmate/commit/03bcc8d)
+- add project-level SDK version management — [`f24bf48`](https://github.com/borenchan/sdkmate/commit/f24bf48)
+
+### 🐛 Bug Fixes
+
+- import sys::process — [`5f2230b`](https://github.com/borenchan/sdkmate/commit/5f2230b)
+- keep list_local_sdk_versions silent and move hint to ui — [`0f6dea7`](https://github.com/borenchan/sdkmate/commit/0f6dea7)
+- throttle TUI tip rotation during size backfill — [`1d834d1`](https://github.com/borenchan/sdkmate/commit/1d834d1)
+- preserve external PATH edits in hook rebuild with layered priority (#17) — [`893f791`](https://github.com/borenchan/sdkmate/commit/893f791)
+- go fuzzy version hijacked by bare go1 entry from go.dev — [`f375eae`](https://github.com/borenchan/sdkmate/commit/f375eae)
+- download progress stuck at 0% or fake 100% due to gzip and zero-length bar — [`570ce53`](https://github.com/borenchan/sdkmate/commit/570ce53)
+- add github_download_mirror to config list output — [`3860b14`](https://github.com/borenchan/sdkmate/commit/3860b14)
+- return bool from unix timezone check for cross-platform build — [`5595d32`](https://github.com/borenchan/sdkmate/commit/5595d32)
+- eliminate TUI flicker with incremental redraw and align source URL to divider width — [`0d461ae`](https://github.com/borenchan/sdkmate/commit/0d461ae)
+- update python version metadata URL after uv repo migration — [`10b3060`](https://github.com/borenchan/sdkmate/commit/10b3060)
+- silence sdkm env on missing config + cross-platform doctor PATH check (v0.4.7) — [`443ffd5`](https://github.com/borenchan/sdkmate/commit/443ffd5)
+- fish path line idempotent no-op when present and inserted above hook comment — [`923faad`](https://github.com/borenchan/sdkmate/commit/923faad)
+- fish path line relocated before hook to prevent base snapshot missing sdk bin — [`c110ade`](https://github.com/borenchan/sdkmate/commit/c110ade)
+- hook cache invalidates on session env changes to preserve session-over-project priority — [`cb63d9f`](https://github.com/borenchan/sdkmate/commit/cb63d9f)
+- persist PATH to profile correctly on re-init — [`9fd47cb`](https://github.com/borenchan/sdkmate/commit/9fd47cb)
+- fuzzy-match project pin in check_project_references — [`7f312e8`](https://github.com/borenchan/sdkmate/commit/7f312e8)
+- add unix stub for powershell_profile_paths to unblock linux build — [`47e3343`](https://github.com/borenchan/sdkmate/commit/47e3343)
+
+### ⚡ Performance
+
+- replace PS Remove-Item unset with null assignment — [`e4f36b4`](https://github.com/borenchan/sdkmate/commit/e4f36b4)
+
+### ♻️ Refactor
+
+- finish core output decoupling and move terminal ui to cli — [`fe4c2be`](https://github.com/borenchan/sdkmate/commit/fe4c2be)
+- move confirmations to cli callers — [`aa35140`](https://github.com/borenchan/sdkmate/commit/aa35140)
+- decouple core output via event sink — [`bed71de`](https://github.com/borenchan/sdkmate/commit/bed71de)
+- decouple list rendering from sdkcore — [`1af78d7`](https://github.com/borenchan/sdkmate/commit/1af78d7)
+- simplify gh() ctor to 3 args with chainable bin/prefix setters — [`ee67d42`](https://github.com/borenchan/sdkmate/commit/ee67d42)
+- split builtin registry into categorized modules with gh() ctor — [`604a164`](https://github.com/borenchan/sdkmate/commit/604a164)
+- enforce use-short-name via clippy absolute_paths lint — [`e664629`](https://github.com/borenchan/sdkmate/commit/e664629)
+
+### 📝 Documentation
+
+- update progress and release matrix notes — [`6610531`](https://github.com/borenchan/sdkmate/commit/6610531)
+- update progress for dependency cleanup — [`9071706`](https://github.com/borenchan/sdkmate/commit/9071706)
+- finalize architecture docs for core decoupling — [`80d7a2c`](https://github.com/borenchan/sdkmate/commit/80d7a2c)
+- add refactor task context for session handoff — [`14b9927`](https://github.com/borenchan/sdkmate/commit/14b9927)
+- update usage docs — [`8aa6a43`](https://github.com/borenchan/sdkmate/commit/8aa6a43)
+- update readme chinese desc — [`ea1b9e2`](https://github.com/borenchan/sdkmate/commit/ea1b9e2)
+- fix stale registry path in region.rs comment — [`2aab879`](https://github.com/borenchan/sdkmate/commit/2aab879)
+- document github_download_mirror in configuration.md — [`62af5a7`](https://github.com/borenchan/sdkmate/commit/62af5a7)
+- update CLAUDE.md progress for TUI incremental redraw and f-key search — [`4440235`](https://github.com/borenchan/sdkmate/commit/4440235)
+- update CLAUDE.md progress for builtin tier-3 SDKs — [`959bf53`](https://github.com/borenchan/sdkmate/commit/959bf53)
+- revamp readme with demo gif, badges and toc; swap en/zh readme files — [`017726a`](https://github.com/borenchan/sdkmate/commit/017726a)
+- update readme — [`3bf5116`](https://github.com/borenchan/sdkmate/commit/3bf5116)
+- update readme — [`5af31c4`](https://github.com/borenchan/sdkmate/commit/5af31c4)
+- keep only latest progress entry in CLAUDE.md — [`7357e67`](https://github.com/borenchan/sdkmate/commit/7357e67)
+- update CLAUDE.md progress for v0.4.5 — [`ffc4d03`](https://github.com/borenchan/sdkmate/commit/ffc4d03)
+- update how-it-works for dynamic global layer and enter-to-apply — [`eae22c6`](https://github.com/borenchan/sdkmate/commit/eae22c6)
+- simplify self uninstall confirmation message — [`52a9a35`](https://github.com/borenchan/sdkmate/commit/52a9a35)
+- add skill scripts — [`28a211a`](https://github.com/borenchan/sdkmate/commit/28a211a)
+- update readme — [`9494c55`](https://github.com/borenchan/sdkmate/commit/9494c55)
+- update star history — [`b4906e1`](https://github.com/borenchan/sdkmate/commit/b4906e1)
+- add multi-scope version switching and shell hook docs — [`5ae3659`](https://github.com/borenchan/sdkmate/commit/5ae3659)
+
+### ✅ Tests
+
+- align origin path with physical cwd and pin ci runners — [`83ddc00`](https://github.com/borenchan/sdkmate/commit/83ddc00)
+- fix integration test mocks for non-windows hosts — [`38054dc`](https://github.com/borenchan/sdkmate/commit/38054dc)
+- make sdkcore version tests platform-independent — [`f73b370`](https://github.com/borenchan/sdkmate/commit/f73b370)
+- add cli golden integration tests and ci workflow — [`ae5fb06`](https://github.com/borenchan/sdkmate/commit/ae5fb06)
+- add shell backend core-entry integration tests — [`3336d07`](https://github.com/borenchan/sdkmate/commit/3336d07)
+
+### 🎨 Style
+
+- fmt — [`fcb6fc7`](https://github.com/borenchan/sdkmate/commit/fcb6fc7)
+- use short names — [`5504dcf`](https://github.com/borenchan/sdkmate/commit/5504dcf)
+- use short names for SdkmConfig in doctor signatures — [`a896666`](https://github.com/borenchan/sdkmate/commit/a896666)
+
+### 👷 CI / Build
+
+- migrate release matrix to macos-15 and containerized ubuntu 22.04 builds — [`410b898`](https://github.com/borenchan/sdkmate/commit/410b898)
+- slim matrix to three latest os runners — [`27787e0`](https://github.com/borenchan/sdkmate/commit/27787e0)
+- add linux aarch64 gnu/musl build artifacts — [`1bdda71`](https://github.com/borenchan/sdkmate/commit/1bdda71)
+
+### 🧰 Chore
+
+- release v0.5.6 — [`8d717fc`](https://github.com/borenchan/sdkmate/commit/8d717fc)
+- remove unused and redundant dependencies — [`b5b6fa5`](https://github.com/borenchan/sdkmate/commit/b5b6fa5)
+- release v0.5.5 — [`deac9c9`](https://github.com/borenchan/sdkmate/commit/deac9c9)
+- release v0.5.4 — [`5402971`](https://github.com/borenchan/sdkmate/commit/5402971)
+- release v0.5.3 — [`bab57b1`](https://github.com/borenchan/sdkmate/commit/bab57b1)
+- release v0.6.0 — [`9e32c28`](https://github.com/borenchan/sdkmate/commit/9e32c28)
+- release v0.5.2 — [`3c78da9`](https://github.com/borenchan/sdkmate/commit/3c78da9)
+- release v0.5.1 — [`c73aa7b`](https://github.com/borenchan/sdkmate/commit/c73aa7b)
+- release 0.4.5 — [`30003e1`](https://github.com/borenchan/sdkmate/commit/30003e1)
+- release 0.4.4 — [`067a4cf`](https://github.com/borenchan/sdkmate/commit/067a4cf)
+- release 0.4.3 — [`b4caaba`](https://github.com/borenchan/sdkmate/commit/b4caaba)
+- release 0.4.2 — [`901eebc`](https://github.com/borenchan/sdkmate/commit/901eebc)
+- release v0.4.1 — [`4b461f3`](https://github.com/borenchan/sdkmate/commit/4b461f3)
+- release v0.4.0 — [`e8603ca`](https://github.com/borenchan/sdkmate/commit/e8603ca)
+
+### 📌 Other
+
+- Merge pull request #23 from borenchan/feature/core-decouple — [`d99ccca`](https://github.com/borenchan/sdkmate/commit/d99ccca)
+- Merge branch 'master' of https://github.com/borenchan/sdkmate — [`31597a4`](https://github.com/borenchan/sdkmate/commit/31597a4)
+- Merge branch 'master' of https://github.com/borenchan/sdkmate — [`124e6c3`](https://github.com/borenchan/sdkmate/commit/124e6c3)
+
+### 🙌 Contributors
+
+- <a href="https://github.com/borenchan"><img src="https://avatars.githubusercontent.com/u/96477641?v=4" width="32" height="32" alt="borenchan" /> borenchan</a>
+- <a href="https://github.com/borenchan"><img src="https://avatars.githubusercontent.com/u/96477641?v=4" width="32" height="32" alt="borenchan" /> Boren Chan</a>
+
+**Full Changelog**: https://github.com/borenchan/sdkmate/compare/v0.3.5...v0.5.6
+
+
+
 ## v0.5.6 - 2026-11-09
 
 
